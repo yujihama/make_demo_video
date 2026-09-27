@@ -5,11 +5,15 @@
 | ステップ | カメラ | 演出 |
 |---|---|---|
 | chapter | 全体 | 章カード（STEP n / N と進捗バー、背景ぼかし） |
-| click / upload / type | 対象へズームイン | クリックの波紋 |
+| click / upload | 対象へズームイン | クリックの波紋 |
+| type | 対象へズームイン | 波紋 ＋ キー表示（入力中の文字を左下に出す） |
 | download | 対象へズームイン | 波紋 ＋ 保存トースト（ファイル名入り） |
 | wait_for | 全体へ引く | 早送りバッジ、完了時に対象を光らせる（パルス） |
 | hover | 対象が収まる程度に寄る | スポットライト（周囲を暗く）＋ 任意の吹き出し |
 | open_download | 窓が出たらデータ範囲へ寄る | なし（実カーソルでセルをなぞる） |
+| compare | 全体 | 導入前後の比較カード（導入後の側が遅れて滑り込む） |
+
+数え上げ（`effect: {countup: {to: 6, label: 指摘, suffix: 件}}`）はどのステップにも付けられる。
 """
 from __future__ import annotations
 
@@ -23,17 +27,19 @@ DEFAULT_STYLE = {
     "speed_badge": True,        # 早送り中に「早送り ×N」を出す
     "intro": True,              # 冒頭のタイトルカード（true / false / {title, subtitle, duration}）
     "outro": True,              # 末尾のまとめカード（true / false / {title, text, duration}）
+    "reading_cps": None,        # 字幕を読む速さ（字/秒）。None は言語ごとの既定（ja 7, en 15）
 }
 
 AUTO_EFFECT = {
     "chapter": {"zoom": "out"},
     "click": {"zoom": "focus", "ripple": True},
     "upload": {"zoom": "focus", "ripple": True},
-    "type": {"zoom": "focus", "ripple": True},
+    "type": {"zoom": "focus", "ripple": True, "keys": True},
     "download": {"zoom": "focus", "ripple": True, "toast": "auto"},
     "wait_for": {"zoom": "out", "pulse": True},
     "hover": {"zoom": "fit", "spotlight": True},
     "open_download": {"zoom": "fit"},
+    "compare": {"zoom": "out"},
     "pause": {},
 }
 

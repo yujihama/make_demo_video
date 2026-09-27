@@ -13,9 +13,10 @@ from pathlib import Path
 
 from PIL import ImageFont
 
+# (ファイル, .ttc 内の番号)。BIZ UDゴシックは 1 番がプロポーショナル版（BIZ UDPゴシック）で、英字が等幅に見えない
 WINDOWS = {
-    False: ["BIZ-UDGothicR.ttc", "YuGothM.ttc", "NotoSansJP-VF.ttf", "meiryo.ttc", "msgothic.ttc"],
-    True: ["BIZ-UDGothicB.ttc", "YuGothB.ttc", "NotoSansJP-VF.ttf", "meiryob.ttc", "msgothic.ttc"],
+    False: [("BIZ-UDGothicR.ttc", 1), ("YuGothM.ttc", 0), ("NotoSansJP-VF.ttf", 0), ("meiryo.ttc", 0), ("msgothic.ttc", 0)],
+    True: [("BIZ-UDGothicB.ttc", 1), ("YuGothB.ttc", 0), ("NotoSansJP-VF.ttf", 0), ("meiryob.ttc", 0), ("msgothic.ttc", 0)],
 }
 LINUX_PATTERN = {False: "Noto Sans CJK JP:style=Regular", True: "Noto Sans CJK JP:style=Bold"}
 
@@ -28,9 +29,9 @@ def font_path(bold: bool = False) -> tuple[str, int]:
         return env, 0
     if os.name == "nt":
         fonts = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
-        for name in WINDOWS[bold]:
+        for name, index in WINDOWS[bold]:
             if (fonts / name).exists():
-                return str(fonts / name), 0
+                return str(fonts / name), index
     if shutil.which("fc-match"):
         out = subprocess.run(["fc-match", "-f", "%{file}|%{index}", LINUX_PATTERN[bold]], capture_output=True, text=True).stdout
         file, _, index = out.partition("|")

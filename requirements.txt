@@ -6,3 +6,5 @@ ruamel.yaml>=0.18
 numpy>=1.26
 pillow>=10.0
 openpyxl>=3.1
+# 翻訳（translate）と見た目の審査（--vision）で Claude を API から呼ぶとき
+anthropic>=1.0

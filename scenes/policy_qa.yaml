@@ -22,6 +22,7 @@ steps:
   - click:
       testid: ask-button
       caption: 規程から該当条文を探して答えます
+      hold: 1100
   - wait_for:
       testid: answer
       text: 経費規程

@@ -3,6 +3,7 @@
 
 id: my_scene                       # 必須。出力フォルダ名（英小文字・数字・_-）
 title: 画面の説明                   # 必須。人が読むための題名
+lang: ja                           # 字幕の元の言語。他の言語は bin/demo translate で scenes/<id>.<lang>.yaml を作る
 url: http://localhost:8080          # 必須。撮影開始時に開く URL
 mode: browser                      # browser（既定）| desktop（open_download を使うとき）
 cursor: ghost                      # ghost（既定・描画カーソル）| smooth | none。desktop では無視（実カーソル）
@@ -21,6 +22,7 @@ style:                             # 演出（後工程）。省略すると ric
   speed_badge: true                # 早送り中に「早送り ×N」を出す
   intro: {subtitle: 補足の一文}     # 冒頭のタイトルカード。false で無し
   outro: true                      # 末尾のまとめカード。false で無し
+  reading_cps: 7                   # 字幕を読む速さ（字/秒）。省略時は言語ごと（ja 7、en 15）
 
 review:                            # 合格判定の基準（bin/demo review / loop が使う）
   min_duration: 10                 # 完成動画の長さの下限（秒）
@@ -43,9 +45,10 @@ steps:                             # 上から順に実行する。1ステップ
         zoom: focus                # focus（寄る）| fit（全体が収まる）| out（引く）| 1.3 など数値 | false
         ripple: true               # クリックの波紋
 
-  - type:                          # 入力欄をクリックして文字を打つ
+  - type:                          # 入力欄をクリックして文字を打つ（入力中の文字が左下に出る）
       testid: text-input
       text: 入力する文字
+      effect: {keys: true}         # キー表示（既定 true）
 
   - upload:                        # ファイル選択。ネイティブのダイアログは出ない
       testid: file-input
@@ -61,7 +64,9 @@ steps:                             # 上から順に実行する。1ステップ
   - hover:                         # カーソルを載せて見せる（既定でスポットライト）
       testid: result-table
       hold: 2000
-      effect: {callout: 指摘 6件}    # スポットライトに添える吹き出し
+      effect:
+        callout: 指摘あり          # スポットライトに添える吹き出し
+        countup: {to: 6, label: 指摘, suffix: 件}   # 数値を 0 から数え上げる大きな吹き出し
 
   - download:                      # クリックしてダウンロード（out/<id>/run/downloads/ に保存。保存通知が自動で出る）
       testid: download-button
@@ -69,5 +74,11 @@ steps:                             # 上から順に実行する。1ステップ
 
   # - open_download:               # desktop モード専用。直前のダウンロードを Calc で開いて見せる
   #     hold: 2500
+
+  - compare:                       # 導入前後の比較カード（全画面。rich のみ）
+      title: 導入効果
+      before: {label: これまで, value: 3日, note: 担当者が目視で確認}
+      after: {label: 導入後, value: 5分, note: 全件を自動で点検}
+      duration: 3800
 
   - pause: 1000                    # 何もせず待つ

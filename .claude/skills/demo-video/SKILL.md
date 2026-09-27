@@ -23,6 +23,8 @@ description: localhost で動く Web アプリのデモ動画を、YAML のシ�
 | 録画→後工程→判定 | `bin/demo make scenes/<id>.yaml` | `out/<id>/run/build/final.mp4`, `review.json` |
 | 合格まで自動で直す | `bin/demo loop scenes/<id>.yaml` | `out/<id>/loop/iterN/`（review.json と fix.diff） |
 | 再現性の確認 | `bin/demo repro scenes/<id>.yaml -n 3` | `out/<id>/repro/repro.json` |
+| 英語版などを作る | `bin/demo translate scenes/<id>.yaml --lang en` → `bin/demo make scenes/<id>.yaml --lang ja,en` | `build-en/final.mp4` |
+| Claude の見た目の審査込みで直す | `bin/demo loop scenes/<id>.yaml --lang ja,en --vision` | `build*/vision.json` |
 | 画面確認用の一覧画像 | `.venv/bin/python -m demo.crv <final.mp4>` | コンタクトシート PNG |
 
 ## 新しい画面を撮る手順
@@ -47,9 +49,17 @@ description: localhost で動く Web アプリのデモ動画を、YAML のシ�
 
 - ステップの種類で自動: クリック系は寄って波紋、`wait_for` は引いて早送り表示＋完了パルス、`hover` はスポットライト、`download` は保存通知、`chapter` は進捗つき章カード。冒頭にタイトル、末尾にまとめ
 - 字幕の強調は `**語**`。無ければ数値＋単位を自動で強調。数字や固有の機能名など「見てほしい語」を1字幕に1〜2個まで
-- 見せ場（結果の表など）の `hover` には `effect: {callout: 短い一言}` を付けると伝わりやすい
+- 見せ場（結果の表など）の `hover` には `effect: {callout: 短い一言}` か `effect: {countup: {to: 6, label: 指摘, suffix: 件}}` を付けると伝わりやすい
+- 導入効果は `compare` ステップ（導入前後の比較カード）で最後に見せる
 - 演出が過剰な場面は `effect: {zoom: false, ripple: false}` などで個別に外す。全体をやめるなら `style: {effects: simple}`
 - 仕上がりはコンタクトシート（`.venv/bin/python -m demo.crv <final.mp4> --frames 15`）で、字幕が操作対象を隠していないか、寄りすぎて文脈が切れていないかを見る
+
+## 読み切れる字幕・多言語版・見た目の審査
+
+- 判定は字幕ごとに「表示秒数 ≥ 文字数 ÷ 読む速さ + 0.4 秒」を見る（ja 7 字/秒、en 15 字/秒）。`loop` が足りない分だけ `hold` を伸ばす。字幕を短くできるなら、そのほうが動画は締まる
+- 多言語版は録画1回で作れる。翻訳ファイル `scenes/<id>.<lang>.yaml` は人が直してよい（`_src` は消さない）。元の字幕を直したら `translate` をもう一度
+- `--vision` は要所のコマを Claude に見せ、隠れ・読みにくさ・強調の的外れ・寄りすぎ・はみ出し・言語違いを指摘させる。high があれば不合格。直し方（hold / caption / effect / style.max_zoom）は `loop` がそのまま反映する
+- Claude を呼べない環境（終了コード 3）では、`out/<id>/_claude/…/request.md` と画像を読んで `schema.json` どおりの `response.json` を置き、同じコマンドをもう一度実行する。Claude Code のセッション自身が審査者・翻訳者になってよい
 
 ## browser と desktop の使い分け
 

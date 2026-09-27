@@ -19,11 +19,17 @@ OK_GREEN = (34, 197, 94)
 
 # 強調: **語** を明示指定。指定が無い字幕は数値＋単位（8件、1,850,000円、100万円 など）を自動で強調する
 EMPH_MARK = re.compile(r"\*\*(.+?)\*\*")
-AUTO_EMPH = re.compile(r"\d[\d,，.]*(?:万|億)?(?:件|円|%|％|秒|分|時間|日|名|人|行|倍|割)?")
-NO_LINE_START = set("、。，．・：；？！）」』】〕ー…")
+AUTO_EMPH = {
+    # 数値の末尾に句読点（8, や 8.）を含めない
+    "ja": re.compile(r"\d(?:[\d,，.]*\d)?(?:万|億)?(?:件|円|%|％|秒|分|時間|日|名|人|行|倍|割)?"),
+    "en": re.compile(r"(?:JPY\s?|¥|\$)?\d(?:[\d,.]*\d)?(?:\s?(?:%|x|items?|cases?|findings?|issues?|yen|seconds?|minutes?"
+                     r"|hours?|days?|rules?|transactions?)\b)?"),
+}
+NO_LINE_START = set("、。，．・：；？！）」』】〕ー…,.;:!?)")
+WORD_CHAR = re.compile(r"[0-9A-Za-z_\-'%$¥.,/]")
 
 
-def parse_emphasis(text: str) -> list[tuple[str, bool]]:
+def parse_emphasis(text: str, lang: str = "ja") -> list[tuple[str, bool]]:
     """[(文字列, 強調か)] に分ける。"""
     if "**" in text:
         runs, pos = [], 0
@@ -36,7 +42,7 @@ def parse_emphasis(text: str) -> list[tuple[str, bool]]:
             runs.append((text[pos:], False))
         return runs
     runs, pos = [], 0
-    for m in AUTO_EMPH.finditer(text):
+    for m in AUTO_EMPH.get(lang, AUTO_EMPH["en"]).finditer(text):
         if m.start() > pos:
             runs.append((text[pos:m.start()], False))
         runs.append((m.group(0), True))
@@ -51,16 +57,32 @@ def plain(text: str) -> str:
 
 
 def _wrap(runs, fonts, max_w):
-    """文字単位で折り返す（行頭禁則つき）。戻り値: 行ごとの [(文字, 強調か)]"""
+    """折り返す。日本語などは文字単位（行頭禁則つき）、英語などは単語単位。戻り値: 行ごとの [(文字, 強調か)]"""
     chars = [(c, e) for s, e in runs for c in s]
-    lines, cur, w = [], [], 0.0
+    # 単語（英数字の連なり）は分けない塊にする
+    tokens, word = [], []
     for c, e in chars:
-        cw = fonts[e].getlength(c)
-        if cur and w + cw > max_w and c not in NO_LINE_START:
+        if WORD_CHAR.match(c):
+            word.append((c, e))
+            continue
+        if word:
+            tokens.append(word)
+            word = []
+        tokens.append([(c, e)])
+    if word:
+        tokens.append(word)
+    lines, cur, w = [], [], 0.0
+    for tok in tokens:
+        tw = sum(fonts[e].getlength(c) for c, e in tok)
+        if cur and w + tw > max_w and tok[0][0] not in NO_LINE_START:
+            while cur and cur[-1][0] == " ":
+                cur.pop()
             lines.append(cur)
             cur, w = [], 0.0
-        cur.append((c, e))
-        w += cw
+            if tok[0][0] == " ":
+                continue
+        cur.extend(tok)
+        w += tw
     if cur:
         lines.append(cur)
     return lines
@@ -73,13 +95,14 @@ def rounded(size, radius, fill) -> Image.Image:
 
 
 @lru_cache(maxsize=64)
-def caption_image(text: str, label: str | None, accent: tuple, max_w: int = 1560, size: int = 38) -> Image.Image:
+def caption_image(text: str, label: str | None, accent: tuple, max_w: int = 1560, size: int = 38,
+                  lang: str = "ja") -> Image.Image:
     """下部（または上部）に出す字幕パネル。左に章ラベル、本文は強調語を強調色の太字で。"""
     fonts = {False: font(size), True: font(size, bold=True)}
     lab_font = font(24, bold=True)
     lab_w = int(lab_font.getlength(label)) + 28 if label else 0
     text_max = max_w - 56 - (lab_w + 18 if label else 0)
-    lines = _wrap(parse_emphasis(text), fonts, text_max)
+    lines = _wrap(parse_emphasis(text, lang), fonts, text_max)
     lh = int(size * 1.45)
     text_w = max(sum(fonts[e].getlength(c) for c, e in ln) for ln in lines)
     W = int(text_w + 56 + (lab_w + 18 if label else 0))
@@ -210,9 +233,8 @@ def toast(layer: Image.Image, text: str, p_in: float, a: float) -> None:
 
 
 @lru_cache(maxsize=8)
-def badge_image(speed: float, accent: tuple) -> Image.Image:
+def badge_image(label: str, accent: tuple) -> Image.Image:
     f = font(34, bold=True)
-    label = f"早送り ×{speed:g}"
     w = int(f.getlength(label)) + 108
     im = rounded((w, 70), 35, (*INK, 220))
     d = ImageDraw.Draw(im)
@@ -223,8 +245,8 @@ def badge_image(speed: float, accent: tuple) -> Image.Image:
     return im
 
 
-def badge(layer: Image.Image, speed: float, a: float, accent) -> None:
-    im = badge_image(speed, accent)
+def badge(layer: Image.Image, label: str, a: float, accent) -> None:
+    im = badge_image(label, accent)
     paste(layer, im, (layer.size[0] - im.width - 36, 40), a)
 
 
@@ -234,14 +256,14 @@ def blurred(frame: Image.Image, darken: float = 0.45) -> Image.Image:
     return ImageEnhance.Brightness(small.resize(frame.size, Image.BILINEAR)).enhance(darken)
 
 
-def chapter_card(size, n: int, total: int, title: str, desc: str, accent) -> Image.Image:
+def chapter_card(size, n: int, total: int, title: str, desc: str, accent, step_label: str | None = None) -> Image.Image:
     """章カード: STEP n / N、題名、説明、進捗バー。"""
     W, H = size
     cw, ch = 1100, 380
     im = Image.new("RGBA", size, (0, 0, 0, 0))
     card = rounded((cw, ch), 28, (*INK, 238))
     d = ImageDraw.Draw(card)
-    d.text((70, 78), f"STEP {n} / {total}", font=font(30, bold=True), fill=(*accent, 255), anchor="lm")
+    d.text((70, 78), step_label or f"STEP {n} / {total}", font=font(30, bold=True), fill=(*accent, 255), anchor="lm")
     d.text((70, 160), title, font=font(72, bold=True), fill=WHITE, anchor="lm")
     if desc:
         d.text((70, 245), desc, font=font(34), fill=MUTED, anchor="lm")
@@ -283,6 +305,93 @@ def summary_card(size, title: str, items: list[str], text: str, accent) -> Image
         y += 76
     if text:
         d.text((W / 2, y + 30), text, font=font(34), fill=MUTED, anchor="mt")
+    return im
+
+
+# --- 視線誘導 -----------------------------------------------------------------------
+def _keyboard_icon(d: ImageDraw.ImageDraw, x, y, col) -> None:
+    d.rounded_rectangle((x, y, x + 46, y + 30), 6, outline=col, width=3)
+    for r in range(2):
+        for c in range(5):
+            d.rectangle((x + 6 + c * 8, y + 7 + r * 8, x + 10 + c * 8, y + 10 + r * 8), fill=col)
+    d.rectangle((x + 12, y + 22, x + 34, y + 25), fill=col)
+
+
+def keystrokes(layer: Image.Image, label: str, typed: str, caret: bool, a: float, accent) -> None:
+    """入力中の文字を左下に表示する（キー表示）。"""
+    f = font(34, bold=True)
+    lab_f = font(22, bold=True)
+    text = typed + ("|" if caret else " ")
+    w = int(max(f.getlength(text), 120) + lab_f.getlength(label) + 150)
+    im = rounded((w, 78), 18, (*INK, 225))
+    d = ImageDraw.Draw(im)
+    _keyboard_icon(d, 22, 24, (*accent, 255))
+    lx = 84
+    d.text((lx, 39), label, font=lab_f, fill=MUTED, anchor="lm")
+    d.text((lx + lab_f.getlength(label) + 18, 39), text, font=f, fill=WHITE, anchor="lm")
+    paste(layer, im, (44, layer.size[1] - im.height - 150), a)
+
+
+def format_number(v: float, decimals: int) -> str:
+    return f"{v:,.{decimals}f}"
+
+
+@lru_cache(maxsize=64)
+def countup_image(label: str, number: str, suffix: str, accent: tuple) -> Image.Image:
+    lab_f, num_f, suf_f = font(28, bold=True), font(64, bold=True), font(34, bold=True)
+    w = int(max(lab_f.getlength(label), num_f.getlength(number) + suf_f.getlength(suffix) + 8)) + 64
+    im = rounded((w, 150), 20, (*accent, 250))
+    d = ImageDraw.Draw(im)
+    d.text((32, 36), label, font=lab_f, fill=INK, anchor="lm")
+    nw = num_f.getlength(number)
+    d.text((32, 100), number, font=num_f, fill=INK, anchor="lm")
+    d.text((32 + nw + 8, 108), suffix, font=suf_f, fill=INK, anchor="lm")
+    return im
+
+
+def countup(layer: Image.Image, rect, label: str, value: float, suffix: str, decimals: int, a: float, accent) -> None:
+    """数値を数え上げて見せる大きな吹き出し。置き場所は callout と同じ考え方（右→上→下）。"""
+    im = countup_image(label, format_number(value, decimals), suffix, accent)
+    W, H = layer.size
+    if rect is None:
+        paste(layer, im, (W - im.width - 60, 200), a)
+        return
+    x, y, w, h = rect
+    if x + w + 40 + im.width < W - 20:
+        px, py = x + w + 40, max(20, y + min(h / 2, 120) - im.height / 2)
+    elif y - im.height - 30 > 20:
+        px, py = min(max(x + w / 2 - im.width / 2, 20), W - im.width - 20), y - im.height - 30
+    else:
+        px, py = min(max(x + w / 2 - im.width / 2, 20), W - im.width - 20), min(y + h + 30, H - im.height - 20)
+    paste(layer, im, (px, py), a)
+
+
+def compare_card(size, title: str, before: dict, after: dict, p_after: float, accent) -> Image.Image:
+    """導入前と導入後を左右に並べるカード。導入後の側は p_after に合わせて滑り込む。"""
+    W, H = size
+    im = Image.new("RGBA", size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.text((W / 2, H / 2 - 250), title, font=font(56, bold=True), fill=WHITE, anchor="mm")
+    pw, ph, gap = 620, 330, 150
+    y0 = H / 2 - 170
+
+    def panel(data, fill, ink, head_col):
+        card = rounded((pw, ph), 24, fill)
+        c = ImageDraw.Draw(card)
+        c.text((44, 58), data.get("label", ""), font=font(32, bold=True), fill=head_col, anchor="lm")
+        c.text((44, 160), data.get("value", ""), font=font(92, bold=True), fill=ink, anchor="lm")
+        if data.get("note"):
+            c.text((44, 262), data["note"], font=font(28), fill=ink, anchor="lm")
+        return card
+
+    left = panel(before, (51, 65, 85, 235), (226, 232, 240, 255), (148, 163, 184, 255))
+    im.alpha_composite(left, (int(W / 2 - gap / 2 - pw), int(y0)))
+    ax = W / 2
+    d.polygon([(ax - 34, y0 + ph / 2 - 30), (ax + 30, y0 + ph / 2), (ax - 34, y0 + ph / 2 + 30)], fill=(*accent, 255))
+    if p_after > 0:
+        right = panel(after, (*accent, 250), (*INK, 255), (*INK, 255))
+        slide = (1 - ease_out(p_after)) * 60
+        im.alpha_composite(with_alpha(right, min(1.0, p_after * 1.5)), (int(W / 2 + gap / 2 + slide), int(y0)))
     return im
 
 
