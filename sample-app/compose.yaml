@@ -1,0 +1,10 @@
+services:
+  app:
+    build: .
+    container_name: audit-demo-app
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 5s
+      retries: 10

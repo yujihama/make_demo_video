@@ -1,0 +1,48 @@
+# Core 1シーン: 証跡アップロード → 監査実行 → 結果確認 → Excel ダウンロード
+id: core_audit
+title: 経費精算の監査を1クリックで
+url: http://localhost:8080
+cursor: ghost
+seed: 42
+zoom: 1.5
+pace:
+  before_action: 400
+  after_action: 800
+
+review:
+  min_duration: 20
+  max_duration: 60
+  max_freeze: 4
+  expect_text:
+    - {after: uploaded, text: "選択中: expense_2026Q3.csv"}
+    - {after: done, text: "8件中 6件の指摘があります"}
+
+steps:
+  - chapter: {title: 証跡のアップロード, description: 経費精算の明細CSVを読み込みます, duration: 2200}
+  - upload:
+      testid: evidence-input
+      file: ../sample-app/sample/expense_2026Q3.csv
+      caption: 監査対象の経費精算明細（8件）を選びます
+      name: uploaded
+      hold: 600
+  - chapter: {title: 監査の実行, description: 3つのルールで全件を点検します, duration: 2200}
+  - click:
+      testid: run-button
+      caption: ボタン1つで監査エージェントが動き始めます
+  - wait_for:
+      testid: status
+      text: 監査が完了しました
+      timeout: 20000
+      duration: 6000
+      caption: 承認漏れ・自己承認・高額取引を自動で洗い出します
+      name: done
+      hold: 800
+  - chapter: {title: 結果の確認とダウンロード, description: 指摘事項をExcelで持ち帰ります, duration: 2200}
+  - hover:
+      testid: findings-table
+      caption: 8件中6件の指摘。根拠となる伝票番号と金額がすぐに分かります
+      hold: 1900
+  - download:
+      testid: download-button
+      caption: 結果はそのままExcelで保存できます
+      hold: 1500

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "デモ動画シーン定義",
+  "type": "object",
+  "required": ["id", "title", "url", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$", "description": "出力ファイル名に使う識別子"},
+    "title": {"type": "string"},
+    "url": {"type": "string", "description": "撮影開始時に開く URL（localhost の対象アプリ）"},
+    "mode": {"enum": ["browser", "desktop"], "description": "browser=Playwright 録画(P2), desktop=Xvfb 画面録画(P3)"},
+    "viewport": {
+      "type": "object", "additionalProperties": false, "required": ["width", "height"],
+      "properties": {"width": {"type": "integer", "minimum": 640}, "height": {"type": "integer", "minimum": 360}}
+    },
+    "zoom": {"type": "number", "minimum": 0.5, "maximum": 3, "description": "body に掛ける CSS zoom。録画は viewport の CSS ピクセル寸法で撮られるため、文字を大きく見せたいときに使う"},
+    "cursor": {"enum": ["ghost", "smooth", "none"], "description": "ghost=playwriter 描画, smooth=smooth-cursor 軌跡+追従描画"},
+    "seed": {"type": "integer"},
+    "pace": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "before_action": {"type": "integer", "minimum": 0, "description": "カーソル到着から操作までの間 (ms)"},
+        "after_action": {"type": "integer", "minimum": 0, "description": "操作後に画面を見せる間 (ms)"}
+      }
+    },
+    "review": {
+      "type": "object", "additionalProperties": false,
+      "description": "自己確認ループ（P5）の合格基準",
+      "properties": {
+        "max_duration": {"type": "number"},
+        "min_duration": {"type": "number"},
+        "max_freeze": {"type": "number", "description": "許容する最長静止秒数（後工程後）"},
+        "expect_text": {
+          "type": "array", "description": "指定ステップの直後の画面に映るべき文字列",
+          "items": {"type": "object", "required": ["after", "text"], "additionalProperties": false,
+                    "properties": {"after": {"type": "string"}, "text": {"type": "string"}}}
+        }
+      }
+    },
+    "steps": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}}
+  },
+  "$defs": {
+    "target": {"type": "string", "description": "data-testid の値"},
+    "common": {
+      "caption": {"type": "string", "description": "字幕（後工程で SRT 化）"},
+      "hold": {"type": "integer", "minimum": 0, "description": "操作後に追加で見せる時間 (ms)"},
+      "name": {"type": "string", "description": "review.expect_text から参照する名前"}
+    },
+    "step": {
+      "type": "object", "minProperties": 1, "maxProperties": 1,
+      "properties": {
+        "chapter": {"type": "object", "required": ["title"], "additionalProperties": false,
+          "properties": {"title": {"type": "string"}, "description": {"type": "string"}, "duration": {"type": "integer", "minimum": 500}}},
+        "click": {"type": "object", "required": ["testid"], "additionalProperties": false,
+          "properties": {"testid": {"$ref": "#/$defs/target"}, "caption": {"type": "string"}, "hold": {"type": "integer"}, "name": {"type": "string"}}},
+        "hover": {"type": "object", "required": ["testid"], "additionalProperties": false,
+          "properties": {"testid": {"$ref": "#/$defs/target"}, "caption": {"type": "string"}, "hold": {"type": "integer"}, "name": {"type": "string"}}},
+        "type": {"type": "object", "required": ["testid", "text"], "additionalProperties": false,
+          "properties": {"testid": {"$ref": "#/$defs/target"}, "text": {"type": "string"}, "caption": {"type": "string"}, "hold": {"type": "integer"}, "name": {"type": "string"}}},
+        "upload": {"type": "object", "required": ["testid", "file"], "additionalProperties": false,
+          "properties": {"testid": {"$ref": "#/$defs/target"}, "file": {"type": "string"}, "caption": {"type": "string"}, "hold": {"type": "integer"}, "name": {"type": "string"}}},
+        "wait_for": {"type": "object", "required": ["testid"], "additionalProperties": false,
+          "properties": {"testid": {"$ref": "#/$defs/target"}, "text": {"type": "string"}, "timeout": {"type": "integer"}, "duration": {"type": "integer", "minimum": 0, "description": "条件成立が早くてもこの長さ (ms) まで待ち、タイムラインを固定する"}, "caption": {"type": "string"}, "hold": {"type": "integer"}, "name": {"type": "string"}}},
+        "download": {"type": "object", "required": ["testid"], "additionalProperties": false,
+          "properties": {"testid": {"$ref": "#/$defs/target"}, "caption": {"type": "string"}, "hold": {"type": "integer"}, "name": {"type": "string"}}},
+        "open_download": {"type": "object", "additionalProperties": false,
+          "description": "直前にダウンロードしたファイルをデスクトップアプリ（LibreOffice Calc）で開く。desktop モード専用",
+          "properties": {"caption": {"type": "string"}, "hold": {"type": "integer"}, "name": {"type": "string"}}},
+        "pause": {"oneOf": [{"type": "integer", "minimum": 0},
+          {"type": "object", "required": ["ms"], "additionalProperties": false,
+           "properties": {"ms": {"type": "integer", "minimum": 0}, "caption": {"type": "string"}, "name": {"type": "string"}}}]}
+      },
+      "additionalProperties": false
+    }
+  }
+}

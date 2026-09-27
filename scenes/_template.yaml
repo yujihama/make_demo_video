@@ -1,0 +1,59 @@
+# シーン定義のひな形。コピーして scenes/<id>.yaml として使う。
+# 全項目の定義は demo/scene.schema.json。値の単位は ms（ミリ秒）、review だけ秒。
+
+id: my_scene                       # 必須。出力フォルダ名（英小文字・数字・_-）
+title: 画面の説明                   # 必須。人が読むための題名
+url: http://localhost:8080          # 必須。撮影開始時に開く URL
+mode: browser                      # browser（既定）| desktop（open_download を使うとき）
+cursor: ghost                      # ghost（既定・描画カーソル）| smooth | none。desktop では無視（実カーソル）
+zoom: 1.5                          # 画面の拡大率（CSS zoom）。1920x1080 で文字を読ませたいとき 1.25〜1.5
+seed: 42                           # smooth カーソルの軌跡を固定する乱数の種
+viewport: {width: 1920, height: 1080}   # 録画サイズ（browser モード）
+pace:
+  before_action: 400               # カーソル到着から操作までの間
+  after_action: 800                # 操作後に画面を見せる間
+
+review:                            # 合格判定の基準（bin/demo review / loop が使う）
+  min_duration: 10                 # 完成動画の長さの下限（秒）
+  max_duration: 90                 # 上限（秒）
+  max_freeze: 4                    # 画面が止まっている区間の最長（秒）
+  expect_text:                     # name を付けたステップの時点で画面に出ているべき文字列
+    - {after: done, text: 完了しました}
+
+steps:                             # 上から順に実行する。1ステップ1キー
+  - chapter:                       # 章カードを全画面に出す（章の区切りにもなる）
+      title: 章の題名
+      description: 補足の一文
+      duration: 2200
+
+  - click:                         # クリック
+      testid: some-button          # 対象の data-testid（必須）
+      caption: 字幕の文            # 任意。このステップの間、字幕として出る
+      hold: 500                    # 任意。操作後に追加で見せる時間
+
+  - type:                          # 入力欄をクリックして文字を打つ
+      testid: text-input
+      text: 入力する文字
+
+  - upload:                        # ファイル選択。ネイティブのダイアログは出ない
+      testid: file-input
+      file: ../sample-app/sample/expense_2026Q3.csv   # このYAMLからの相対パス
+
+  - wait_for:                      # 画面に文字が出るまで待つ（処理待ち。後工程で自動的に早送り）
+      testid: status
+      text: 完了しました
+      timeout: 20000               # これを過ぎたら失敗
+      duration: 6000               # 早く終わってもこの長さまで待つ → 毎回同じタイムラインになる
+      name: done                   # review.expect_text から参照する名前
+
+  - hover:                         # カーソルを載せて見せる
+      testid: result-table
+      hold: 2000
+
+  - download:                      # クリックしてダウンロード（out/<id>/run/downloads/ に保存）
+      testid: download-button
+
+  # - open_download:               # desktop モード専用。直前のダウンロードを Calc で開いて見せる
+  #     hold: 2500
+
+  - pause: 1000                    # 何もせず待つ

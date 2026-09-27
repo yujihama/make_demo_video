@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# デモ動画ツールの実行ラッパー。どのフォルダからでも呼べる（シーンと出力はカレントフォルダ基準）。
+#   bin/demo make scenes/core_audit.yaml
+KIT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+if [[ ! -x "$KIT_DIR/.venv/bin/python" ]]; then
+  echo "仮想環境がありません。先に $KIT_DIR/install.sh を実行してください" >&2
+  exit 1
+fi
+export PYTHONPATH="$KIT_DIR${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONIOENCODING=utf-8
+exec "$KIT_DIR/.venv/bin/python" -m demo "$@"

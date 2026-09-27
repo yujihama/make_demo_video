@@ -1,0 +1,32 @@
+# 新モジュール: 規程Q&A。ツール側のコードは変えず、この YAML を足しただけで撮る（P6 の合格判定）
+id: policy_qa
+title: 社内規程にその場で答える
+url: http://localhost:8080/policy
+cursor: ghost
+zoom: 1.5
+
+review:
+  min_duration: 10
+  max_duration: 40
+  max_freeze: 4
+  expect_text:
+    - {after: answered, text: "事前に部長承認が必要です"}
+
+steps:
+  - chapter: {title: 規程Q&A, description: 経費規程について自然文で質問します, duration: 2200}
+  - type:
+      testid: question-input
+      text: 接待交際費の上限と承認ルールは？
+      caption: 知りたいことをそのまま入力します
+      hold: 400
+  - click:
+      testid: ask-button
+      caption: 規程から該当条文を探して答えます
+  - wait_for:
+      testid: answer
+      text: 経費規程
+      timeout: 10000
+      duration: 2500
+      name: answered
+      caption: 根拠となる条文番号も一緒に示されます
+      hold: 2500

@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# 動作確認: サンプルアプリに対して セレクタ確認 → 撮影 → 後工程 → 判定 を通す。
+#   ./verify.sh            browser モード（Core シーン・規程Q&A）
+#   ./verify.sh --desktop  加えて desktop モード（ブラウザ＋Calc）
+# 完成動画ができれば導入は成功。判定（review）が不合格でも、原因は表示して導入の失敗とは扱わない。
+set -uo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")"
+DESKTOP=0
+[[ "${1:-}" == "--desktop" ]] && DESKTOP=1
+APP_URL="${APP_URL:-http://localhost:8080}"
+
+red()   { printf '\033[31m%s\033[0m\n' "$*"; }
+green() { printf '\033[32m%s\033[0m\n' "$*"; }
+
+curl -fsS "$APP_URL/health" >/dev/null 2>&1 || {
+  red "サンプルアプリが応答しません（$APP_URL）。./install.sh --sample を実行してください"
+  exit 1
+}
+
+scenes=(scenes/core_audit.yaml scenes/policy_qa.yaml)
+[[ $DESKTOP == 1 ]] && scenes+=(scenes/core_audit_desktop.yaml)
+
+echo "== dryrun（録画なしでセレクタを確認）"
+bin/demo dryrun scenes/core_audit.yaml || { red "dryrun に失敗しました"; exit 1; }
+
+failed=0
+for s in "${scenes[@]}"; do
+  id=$(basename "$s" .yaml)
+  echo; echo "== make $s"
+  bin/demo make "$s" 2>&1 | grep -vE '^\s*\[|xkbcomp|keysym|^>'
+  code=${PIPESTATUS[0]}
+  final="out/$id/run/build/final.mp4"
+  if [[ -s "$final" ]]; then
+    if [[ $code == 0 ]]; then green "   OK  $final（判定 合格）"; else
+      green "   OK  $final（撮影・後工程は成功）"
+      echo "       判定は不合格: out/$id/run/review.json を確認。bin/demo loop $s で自動修正できます"
+    fi
+  else
+    red "   NG  $s の完成動画ができませんでした"; failed=1
+  fi
+done
+
+echo
+if [[ $failed == 0 ]]; then green "動作確認が完了しました。完成動画は out/<シーンID>/run/build/final.mp4 です"; else red "失敗したシーンがあります"; fi
+exit $failed

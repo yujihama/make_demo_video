@@ -1,0 +1,8 @@
+# playwright は recorder/Dockerfile のベースイメージ（v1.63.0）と版を揃える
+playwright==1.63.0
+pyyaml>=6.0
+jsonschema>=4.18
+ruamel.yaml>=0.18
+numpy>=1.26
+pillow>=10.0
+openpyxl>=3.1
