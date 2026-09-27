@@ -6,15 +6,20 @@
   4. 字幕を焼き込み、章メタデータ付きの MP4（H.264 / 30fps）を書き出す
 
 出力: final.mp4, subtitles.srt, chapters.json, build.json
+シーンの style.effects が rich（既定）なら 4 の代わりに合成エンジン（compose.py）で演出を重ねる。
 """
 from __future__ import annotations
 
 import json
 import platform
 import subprocess
+import time
 from pathlib import Path
 
+from . import scene as scene_mod
 from .ff import FFMPEG
+from .overlays import plain
+from .style import scene_style
 from .record import SYNC_MS
 from .sync import offset as sync_offset
 
@@ -55,6 +60,16 @@ class TimeMap:
             out += (min(t, e) - s) / sp
         return round(out, 3)
 
+    def inverse(self, t_out: float) -> float:
+        """完成動画の時刻 → 録画の時刻。"""
+        acc = 0.0
+        for s, e, sp in self.segs:
+            d = (e - s) / sp
+            if t_out <= acc + d:
+                return s + (t_out - acc) * sp
+            acc += d
+        return self.segs[-1][1]
+
     @property
     def duration(self) -> float:
         return round(sum((e - s) / sp for s, e, sp in self.segs), 3)
@@ -85,6 +100,10 @@ def build(run_dir: str | Path, out: str | Path | None = None, speed: float = IDL
     segs = segments(m["events"], start, end, speed)
     tm = TimeMap(segs)
 
+    scene = scene_mod.load(m["scene_path"]) if Path(m["scene_path"]).exists() else None
+    if scene and scene_style(scene)["effects"] == "rich":
+        return _build_rich(m, scene, video, out, off, start, end, segs, tm, speed)
+
     # 字幕: キャプション付きステップの開始〜終了（次のキャプションまでに収める）
     caps = [e for e in m["events"] if e.get("caption")]
     lines = []
@@ -95,7 +114,7 @@ def build(run_dir: str | Path, out: str | Path | None = None, speed: float = IDL
         # 操作対象が画面の下寄りなら字幕を上に出して、対象を隠さない
         top = "box" in e and (e["box"][1] + e["box"][3]) > m["viewport"]["height"] * 0.62
         pos = "{\\an8}" if top else ""
-        lines.append(f"{n}\n{srt_time(a)} --> {srt_time(b)}\n{pos}{e['caption']}\n")
+        lines.append(f"{n}\n{srt_time(a)} --> {srt_time(b)}\n{pos}{plain(e['caption'])}\n")
     (out / "subtitles.srt").write_text("\n".join(lines), encoding="utf-8")
 
     # 章: chapter ステップから次の chapter ステップまで
@@ -127,9 +146,47 @@ def build(run_dir: str | Path, out: str | Path | None = None, speed: float = IDL
            "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-movflags", "+faststart", "final.mp4"]
     subprocess.run(cmd, cwd=out, check=True)
 
-    info = {"source": str(video), "offset": off, "trim_start": start, "segments": segs,
-            "idle_speed": speed, "raw_span": round(end - start, 3), "duration": tm.duration,
-            "captions": len(lines), "chapters": chapters, "final": str(out / "final.mp4")}
+    info = {"source": str(video), "offset": off, "trim_start": start, "segments": segs, "effects": "simple",
+            "lead": 0.0, "main_duration": tm.duration, "idle_speed": speed, "raw_span": round(end - start, 3),
+            "duration": tm.duration, "captions": len(lines), "chapters": chapters, "final": str(out / "final.mp4")}
     (out / "build.json").write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
     return info
+
+
+def _write_chapters(out: Path, chapters: list[dict]) -> None:
+    (out / "chapters.json").write_text(json.dumps(chapters, ensure_ascii=False, indent=1), encoding="utf-8")
+    meta = [";FFMETADATA1"]
+    for c in chapters:
+        meta += ["[CHAPTER]", "TIMEBASE=1/1000", f"START={int(c['start'] * 1000)}", f"END={int(c['end'] * 1000)}", f"title={c['title']}"]
+    (out / "chapters.ffmeta").write_text("\n".join(meta) + "\n", encoding="utf-8")
+
+
+def _build_rich(m, scene, video, out, off, start, end, segs, tm, speed) -> dict:
+    """rich 演出: 合成エンジンでカメラ・波紋・スポットライト・字幕・カードを重ねる。"""
+    from .compose import make_plan, render, srt_lines
+    from .crv import probe
+
+    info = probe(video)
+    W, H = info["width"], info["height"]
+    plan = make_plan(m, scene, tm, segs, W, H)
+    lead, main = plan.intro_s, tm.duration
+    total = round(lead + main + plan.outro_s, 3)
+    lines = srt_lines(plan, srt_time)
+    (out / "subtitles.srt").write_text("\n".join(lines), encoding="utf-8")
+    chapters = []
+    for j, ch in enumerate(plan.chapters):
+        st = 0.0 if j == 0 else ch["a"]
+        en = plan.chapters[j + 1]["a"] if j + 1 < len(plan.chapters) else total
+        chapters.append({"title": ch["title"], "start": round(st, 3), "end": round(en, 3)})
+    _write_chapters(out, chapters)
+    t0 = time.monotonic()
+    render(video.resolve(), out / "final.mp4", plan, tm, start, end, out / "chapters.ffmeta")
+    effects = {k: len(getattr(plan, k)) for k in ("captions", "ripples", "spotlights", "pulses", "toasts", "badges", "chapters")}
+    effects["camera_shots"] = len(plan.camera.shots)
+    result = {"source": str(video), "offset": off, "trim_start": start, "segments": segs, "effects": "rich",
+              "lead": lead, "main_duration": main, "outro": plan.outro_s, "idle_speed": speed,
+              "raw_span": round(end - start, 3), "duration": total, "captions": len(lines), "chapters": chapters,
+              "effect_counts": effects, "render_seconds": round(time.monotonic() - t0, 1), "final": str(out / "final.mp4")}
+    (out / "build.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    return result
 

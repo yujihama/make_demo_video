@@ -41,6 +41,16 @@ description: localhost で動く Web アプリのデモ動画を、YAML のシ�
 - `caption` は字幕になる。操作対象が画面下寄りなら自動で上に出る
 - `name` を付けたステップはその時点の画面が保存され、`review.expect_text` で照合される
 
+## 演出（字幕・効果・強調）
+
+演出は後工程で操作ログから自動で付く。撮り直さずに `bin/demo build out/<id>/run` で作り直せる。
+
+- ステップの種類で自動: クリック系は寄って波紋、`wait_for` は引いて早送り表示＋完了パルス、`hover` はスポットライト、`download` は保存通知、`chapter` は進捗つき章カード。冒頭にタイトル、末尾にまとめ
+- 字幕の強調は `**語**`。無ければ数値＋単位を自動で強調。数字や固有の機能名など「見てほしい語」を1字幕に1〜2個まで
+- 見せ場（結果の表など）の `hover` には `effect: {callout: 短い一言}` を付けると伝わりやすい
+- 演出が過剰な場面は `effect: {zoom: false, ripple: false}` などで個別に外す。全体をやめるなら `style: {effects: simple}`
+- 仕上がりはコンタクトシート（`.venv/bin/python -m demo.crv <final.mp4> --frames 15`）で、字幕が操作対象を隠していないか、寄りすぎて文脈が切れていないかを見る
+
 ## browser と desktop の使い分け
 
 - ブラウザ内で完結する場面は browser（既定）

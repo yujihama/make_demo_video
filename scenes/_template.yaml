@@ -13,6 +13,15 @@ pace:
   before_action: 400               # カーソル到着から操作までの間
   after_action: 800                # 操作後に画面を見せる間
 
+style:                             # 演出（後工程）。省略すると rich の自動演出（README 4.4）
+  effects: rich                    # rich | simple（焼き込み字幕だけ）
+  accent: "#FFB020"                # 強調色（強調語・波紋・枠・進捗）
+  max_zoom: 1.6                    # カメラの最大拡大率
+  caption_label: true              # 字幕の左に章名を出す
+  speed_badge: true                # 早送り中に「早送り ×N」を出す
+  intro: {subtitle: 補足の一文}     # 冒頭のタイトルカード。false で無し
+  outro: true                      # 末尾のまとめカード。false で無し
+
 review:                            # 合格判定の基準（bin/demo review / loop が使う）
   min_duration: 10                 # 完成動画の長さの下限（秒）
   max_duration: 90                 # 上限（秒）
@@ -28,8 +37,11 @@ steps:                             # 上から順に実行する。1ステップ
 
   - click:                         # クリック
       testid: some-button          # 対象の data-testid（必須）
-      caption: 字幕の文            # 任意。このステップの間、字幕として出る
+      caption: "**強調したい語**を含む字幕"   # 任意。**…** は強調色の太字。無ければ数値（8件・100万円）を自動で強調
       hold: 500                    # 任意。操作後に追加で見せる時間
+      effect:                      # 任意。自動で決まる演出の上書き
+        zoom: focus                # focus（寄る）| fit（全体が収まる）| out（引く）| 1.3 など数値 | false
+        ripple: true               # クリックの波紋
 
   - type:                          # 入力欄をクリックして文字を打つ
       testid: text-input
@@ -46,12 +58,14 @@ steps:                             # 上から順に実行する。1ステップ
       duration: 6000               # 早く終わってもこの長さまで待つ → 毎回同じタイムラインになる
       name: done                   # review.expect_text から参照する名前
 
-  - hover:                         # カーソルを載せて見せる
+  - hover:                         # カーソルを載せて見せる（既定でスポットライト）
       testid: result-table
       hold: 2000
+      effect: {callout: 指摘 6件}    # スポットライトに添える吹き出し
 
-  - download:                      # クリックしてダウンロード（out/<id>/run/downloads/ に保存）
+  - download:                      # クリックしてダウンロード（out/<id>/run/downloads/ に保存。保存通知が自動で出る）
       testid: download-button
+      effect: {toast: 結果をExcelで保存しました}   # 通知の文を変える（既定はファイル名入り）
 
   # - open_download:               # desktop モード専用。直前のダウンロードを Calc で開いて見せる
   #     hold: 2500
