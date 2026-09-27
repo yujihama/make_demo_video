@@ -10,6 +10,10 @@
   chapters    章の本数 = chapter ステップ数
   expect_text 名前付きステップの時点で画面に期待文字列があり、その時点の動画フレームが実画面と一致する
   cursor      （desktop）実カーソルの位置誤差 ≤ 2px
+  readability 字幕ごとに、表示秒数 ≥ 文字数 / 読む速さ（言語別。ja 7 字/秒、en 15 字/秒）+ 0.4 秒
+  vision      （--vision のとき）Claude Code が要所のコマを見て、high の指摘が無い
+
+言語を指定すると build-<lang>/ を判定し、結果は review-<lang>.json に出す（元の言語は review.json）。
 """
 from __future__ import annotations
 
@@ -21,16 +25,25 @@ from PIL import Image
 
 from . import crv
 from . import scene as scene_mod
+from .build import build_dir
+from .i18n import localize, scene_lang
 from .sync import gray_at
 
 MATCH_MAD = 6.0
 
 
-def review(run_dir: str | Path) -> dict:
+def review_path(run_dir: Path, sc: dict | None, lang: str | None) -> Path:
+    base = scene_lang(sc) if sc else "ja"
+    return Path(run_dir) / ("review.json" if not lang or lang == base else f"review-{lang}.json")
+
+
+def review(run_dir: str | Path, lang: str | None = None, vision: bool = False) -> dict:
     run_dir = Path(run_dir)
     m = json.loads((run_dir / "events.json").read_text(encoding="utf-8"))
-    b = json.loads((run_dir / "build" / "build.json").read_text(encoding="utf-8"))
-    sc = scene_mod.load(m["scene_path"]) if Path(m["scene_path"]).exists() else {"steps": [], "review": {}}
+    src = scene_mod.load(m["scene_path"]) if Path(m["scene_path"]).exists() else None
+    bdir = build_dir(run_dir, src, lang)
+    b = json.loads((bdir / "build.json").read_text(encoding="utf-8"))
+    sc = localize(src, lang) if src else {"steps": [], "review": {}}
     crit = {"min_duration": 5, "max_duration": 180, "max_freeze": 5, "expect_text": [], **sc.get("review", {})}
     final = Path(b["final"])
     info = crv.probe(final)
@@ -59,9 +72,18 @@ def review(run_dir: str | Path) -> dict:
     spans = [(max(s, lo), min(e if e is not None else info["duration"], hi)) for s, e in det["freeze"]]
     det["freeze"] = [(round(s, 3), round(e, 3)) for s, e in spans if e > s]
     freezes = [round(e - s, 2) for s, e in det["freeze"]]
-    longest = max(freezes, default=0)
-    where = det["freeze"][freezes.index(longest)] if freezes else None
-    check("freeze", longest <= crit["max_freeze"], {"longest": longest, "at": where, "max": crit["max_freeze"]},
+    # 字幕が出ている間の静止は「読んでいる時間」なので、その字幕の表示秒数 + 0.5 秒までは許す
+    caps = b.get("readability", [])
+
+    def allowed(s, e):
+        over = [c["shown_s"] for c in caps if c["a"] < e and c["b"] > s]
+        return max([crit["max_freeze"]] + [x + 0.5 for x in over])
+
+    excess = [(round(f - allowed(s, e), 2), f, (s, e)) for f, (s, e) in zip(freezes, det["freeze"])]
+    worst = max(excess, default=(0, 0, None))
+    longest, where = worst[1], worst[2]
+    check("freeze", worst[0] <= 0, {"longest": longest, "at": where, "max": crit["max_freeze"],
+                                    "allowed_here": round(allowed(*where), 2) if where else None},
           f"final の {where} 付近の静止が長い。該当ステップの hold を減らすか、待ちなら wait_for の duration を短くする")
     n_caps = sum(1 for _, _, s in scene_mod.steps(sc) if s.get("caption")) if sc["steps"] else b["captions"]
     check("captions", b["captions"] == n_caps, {"srt": b["captions"], "steps": n_caps})
@@ -83,7 +105,8 @@ def review(run_dir: str | Path) -> dict:
         if snap.exists():
             ref = Image.open(snap).convert("L")
             t = e["snap_at"] + off
-            frame = gray_at(Path(b["source"]), t, 1920, 1080)
+            source = Path(b["source"]) if Path(b["source"]).exists() else run_dir / Path(b["source"]).name
+            frame = gray_at(source, t, 1920, 1080)
             x0, y0 = int(calib[0]), int(calib[1])
             crop = frame[y0:y0 + ref.height, x0:x0 + ref.width]
             r = np.asarray(ref, dtype=float)[: crop.shape[0], : crop.shape[1]]
@@ -96,6 +119,27 @@ def review(run_dir: str | Path) -> dict:
         err = m.get("max_cursor_err_px")
         check("cursor", err is not None and err <= 2.0, {"max_err_px": err, "calibration": m.get("calibration")})
 
-    result = {"final": str(final), "probe": info, "checks": checks, "failures": failures, "pass": not failures}
-    (run_dir / "review.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    # 読み切れる字幕: 表示秒数が「文字数 / 読む速さ + 反応時間」に足りているか
+    short = [r for r in b.get("readability", []) if not r["ok"]]
+    check("readability", not short, {"lang": b.get("lang"), "short": short},
+          "字幕が速すぎて読み切れない。該当ステップの hold を short_s 秒以上伸ばすか、字幕を短くする")
+
+    vis, suggested = None, []
+    if vision:
+        from .vision import review_visual
+        vis = review_visual(run_dir, lang)
+        bad = [f for f in vis["findings"] if f["severity"] in ("high", "medium")]
+        for f in bad:
+            failures.append({"check": f"vision:{f['category']}", "detail": {k: f[k] for k in ("frame", "step", "severity", "problem")},
+                             "hint": f["suggestion"], "fix": f.get("fix"), "severity": f["severity"]})
+        ok = vis["overall"] == "pass" and not any(f["severity"] == "high" for f in vis["findings"])
+        checks["vision"] = {"ok": ok, "detail": {"summary": vis["summary"], "findings": len(vis["findings"]),
+                                                 "high": sum(f["severity"] == "high" for f in vis["findings"])}}
+        if ok:  # medium だけなら合格扱い。直し方は suggested として残し、ループが他の理由で回るときに一緒に反映する
+            suggested = [f for f in failures if f["check"].startswith("vision:") and f.get("severity") == "medium"]
+            failures = [f for f in failures if f not in suggested]
+
+    result = {"lang": b.get("lang"), "final": str(final), "probe": info, "checks": checks,
+              "failures": failures, "pass": not failures, "suggested": suggested, "vision": vis}
+    review_path(run_dir, src, lang).write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
     return result

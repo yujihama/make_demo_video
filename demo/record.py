@@ -143,6 +143,7 @@ class Recorder:
         def act(loc, xy):
             self.press(xy)
             loc.press_sequentially(spec["text"], delay=0 if self.dry else 60)
+            ev["type_end"] = self.now()  # キー表示を入力の速さに合わせるため
         self._pointer_action(i, spec, ev, pace, act)
 
     def do_upload(self, i, spec, ev, pace):
@@ -194,6 +195,10 @@ class Recorder:
         else:
             # rich: 章カードは後工程で重ねる（背景ぼかし・進捗つき）。録画側は間だけ取る
             self.wait(ms)
+
+    def do_compare(self, i, spec, ev, pace):
+        # 導入前後の比較カードは後工程で重ねる。録画側は間だけ取る
+        self.wait(spec.get("duration", 3500))
 
     def do_pause(self, i, spec, ev, pace):
         self.wait(spec["ms"])

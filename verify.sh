@@ -27,14 +27,17 @@ failed=0
 for s in "${scenes[@]}"; do
   id=$(basename "$s" .yaml)
   echo; echo "== make $s"
-  bin/demo make "$s" 2>&1 | grep -vE '^\s*\[|xkbcomp|keysym|^>'
+  langs=""
+  [[ "$id" == "core_audit" ]] && langs="--lang ja,en"   # 多言語版（英語）も確認する
+  bin/demo make "$s" $langs 2>&1 | grep -vE '^\s*\[|xkbcomp|keysym|^>'
   code=${PIPESTATUS[0]}
   final="out/$id/run/build/final.mp4"
   if [[ -s "$final" ]]; then
     if [[ $code == 0 ]]; then green "   OK  $final（判定 合格）"; else
       green "   OK  $final（撮影・後工程は成功）"
-      echo "       判定は不合格: out/$id/run/review.json を確認。bin/demo loop $s で自動修正できます"
+      echo "       判定は不合格: out/$id/run/review*.json を確認。bin/demo loop $s $langs で自動修正できます"
     fi
+    [[ -n "$langs" && -s "out/$id/run/build-en/final.mp4" ]] && green "   OK  out/$id/run/build-en/final.mp4（英語版）"
   else
     red "   NG  $s の完成動画ができませんでした"; failed=1
   fi

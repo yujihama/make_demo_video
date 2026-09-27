@@ -220,8 +220,19 @@
             }
           ],
           "description": "末尾のまとめカード（既定: 章の一覧にチェック）"
+        },
+        "reading_cps": {
+          "type": "number",
+          "minimum": 2,
+          "maximum": 30,
+          "description": "字幕を読む速さ（字/秒）。既定は言語ごと（ja 7、en 15）"
         }
       }
+    },
+    "lang": {
+      "type": "string",
+      "pattern": "^[a-z]{2}(-[A-Za-z]{2})?$",
+      "description": "字幕・カードの元の言語（既定 ja）。他の言語は scenes/<id>.<lang>.yaml の翻訳で作る"
     }
   },
   "$defs": {
@@ -482,6 +493,68 @@
               }
             }
           ]
+        },
+        "compare": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "before",
+            "after"
+          ],
+          "description": "導入前後の比較カード（rich のみ。全画面で前→後の順に見せる）",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "before": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "label",
+                "value"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "note": {
+                  "type": "string"
+                }
+              }
+            },
+            "after": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "label",
+                "value"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "note": {
+                  "type": "string"
+                }
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "minimum": 1000
+            },
+            "caption": {
+              "type": "string"
+            },
+            "effect": {
+              "$ref": "#/$defs/effect"
+            }
+          }
         }
       },
       "additionalProperties": false
@@ -537,6 +610,37 @@
             }
           ],
           "description": "右上の通知。download は既定でファイル名入り"
+        },
+        "keys": {
+          "type": "boolean",
+          "description": "入力中の文字を左下に出すキー表示（type の既定は true）"
+        },
+        "countup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "to"
+          ],
+          "description": "数値を数え上げて見せる大きな吹き出し（例: {to: 6, label: 指摘, suffix: 件}）",
+          "properties": {
+            "to": {
+              "type": "number"
+            },
+            "from": {
+              "type": "number"
+            },
+            "label": {
+              "type": "string"
+            },
+            "suffix": {
+              "type": "string"
+            },
+            "decimals": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            }
+          }
         }
       }
     }

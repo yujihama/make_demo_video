@@ -1,6 +1,7 @@
 # Core 1シーン: 証跡アップロード → 監査実行 → 結果確認 → Excel ダウンロード
 id: core_audit
 title: 経費精算の監査を1クリックで
+lang: ja                          # 字幕の元の言語。英語版は scenes/core_audit.en.yaml（bin/demo translate）
 url: http://localhost:8080
 cursor: ghost
 seed: 42
@@ -15,7 +16,7 @@ style:
 
 review:
   min_duration: 20
-  max_duration: 60
+  max_duration: 70
   max_freeze: 4
   expect_text:
     - {after: uploaded, text: "選択中: expense_2026Q3.csv"}
@@ -28,26 +29,32 @@ steps:
       file: ../sample-app/sample/expense_2026Q3.csv
       caption: 監査対象の経費精算明細を選びます（**8件**）
       name: uploaded
-      hold: 600
+      hold: 2200
   - chapter: {title: 監査の実行, description: 3つのルールで全件を点検します, duration: 2200}
   - click:
       testid: run-button
       caption: "**ボタン1つ**で監査エージェントが動き始めます"
+      hold: 1700
   - wait_for:
       testid: status
       text: 監査が完了しました
       timeout: 20000
       duration: 6000
-      caption: "**承認漏れ・自己承認・高額取引**を自動で洗い出します"
+      caption: "**承認漏れ・自己承認・高額取引**を自動で検出"
       name: done
-      hold: 800
+      hold: 2100
   - chapter: {title: 結果の確認とダウンロード, description: 指摘事項をExcelで持ち帰ります, duration: 2200}
   - hover:
       testid: findings-table
       caption: 8件中6件の指摘。根拠となる伝票番号と金額がすぐに分かります
-      hold: 2400
-      effect: {callout: 指摘 6件}
+      hold: 3000
+      effect: {countup: {to: 6, label: 指摘, suffix: 件}}   # 数え上げで件数に目を向けさせる
   - download:
       testid: download-button
       caption: 結果はそのままExcelで保存できます
       hold: 1500
+  - compare:                        # 導入前後の比較カード（全画面）
+      title: 導入効果
+      before: {label: これまで, value: 3日, note: 担当者が明細を目視で確認}
+      after: {label: 監査エージェント, value: 5分, note: 全件をルールで自動点検}
+      duration: 3800

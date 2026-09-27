@@ -1,0 +1,50 @@
+# core_audit.yaml の 英語 訳（bin/demo translate で作成）。
+# 訳は人が直してよい。_src は元の文言のハッシュなので消さない。
+lang: en
+source_lang: ja
+_head_src:
+  title: 58e20f05
+title: Expense audits in one click
+steps:
+  - kind: chapter
+    _src: fc38618b
+    title: Upload evidence
+    description: Load the expense line items (CSV)
+  - kind: upload
+    _src: 728b7dc5
+    caption: Pick the expense report to audit (**8 transactions**)
+  - kind: chapter
+    _src: 4d49540c
+    title: Run the audit
+    description: Every line checked against 3 rules
+  - kind: click
+    _src: 165cc62f
+    caption: '**One click** starts the audit agent'
+  - kind: wait_for
+    _src: b370ac8f
+    caption: Checks every line against **3 rules**
+  - kind: chapter
+    _src: 170a0c2b
+    title: Review and download
+    description: Take the findings home in Excel
+  - kind: hover
+    _src: 33919f4c
+    caption: 6 findings out of 8, each with its voucher number and amount
+    effect:
+      countup:
+        label: Findings
+        suffix: ''
+  - kind: download
+    _src: 50b6ce8a
+    caption: Save the results straight to Excel
+  - kind: compare
+    _src: 62a94c50
+    title: Impact
+    before:
+      label: Before
+      value: 3 days
+      note: Staff review every line by eye
+    after:
+      label: Audit agent
+      value: 5 min
+      note: Every line checked by rules

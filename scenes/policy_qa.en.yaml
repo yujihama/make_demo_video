@@ -1,0 +1,21 @@
+# policy_qa.yaml の 英語 訳（bin/demo translate で作成）。
+# 訳は人が直してよい。_src は元の文言のハッシュなので消さない。
+lang: en
+source_lang: ja
+_head_src:
+  title: 0c5c9722
+title: Policy answers on the spot
+steps:
+  - kind: chapter
+    _src: 6f90c9a7
+    title: Policy Q&A
+    description: Ask about the expense policy in plain words
+  - kind: type
+    _src: 47a72354
+    caption: Just type what you want to know
+  - kind: click
+    _src: d4ba4687
+    caption: It finds the matching clause and answers
+  - kind: wait_for
+    _src: dfcdf134
+    caption: The answer cites the **clause number**
