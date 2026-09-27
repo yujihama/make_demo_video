@@ -11,7 +11,7 @@
   expect_text 名前付きステップの時点で画面に期待文字列があり、その時点の動画フレームが実画面と一致する
   cursor      （desktop）実カーソルの位置誤差 ≤ 2px
   readability 字幕ごとに、表示秒数 ≥ 文字数 / 読む速さ（言語別。ja 7 字/秒、en 15 字/秒）+ 0.4 秒
-  vision      （--vision のとき）Claude が要所のコマを見て、high の指摘が無い
+  vision      （--vision のとき）Claude Code が要所のコマを見て、high の指摘が無い
 
 言語を指定すると build-<lang>/ を判定し、結果は review-<lang>.json に出す（元の言語は review.json）。
 """
@@ -37,7 +37,7 @@ def review_path(run_dir: Path, sc: dict | None, lang: str | None) -> Path:
     return Path(run_dir) / ("review.json" if not lang or lang == base else f"review-{lang}.json")
 
 
-def review(run_dir: str | Path, lang: str | None = None, vision: bool = False, backend: str | None = None) -> dict:
+def review(run_dir: str | Path, lang: str | None = None, vision: bool = False) -> dict:
     run_dir = Path(run_dir)
     m = json.loads((run_dir / "events.json").read_text(encoding="utf-8"))
     src = scene_mod.load(m["scene_path"]) if Path(m["scene_path"]).exists() else None
@@ -127,7 +127,7 @@ def review(run_dir: str | Path, lang: str | None = None, vision: bool = False, b
     vis, suggested = None, []
     if vision:
         from .vision import review_visual
-        vis = review_visual(run_dir, lang, backend)
+        vis = review_visual(run_dir, lang)
         bad = [f for f in vis["findings"] if f["severity"] in ("high", "medium")]
         for f in bad:
             failures.append({"check": f"vision:{f['category']}", "detail": {k: f[k] for k in ("frame", "step", "severity", "problem")},

@@ -40,7 +40,7 @@ steps:
       text: 監査が完了しました
       timeout: 20000
       duration: 6000
-      caption: "**承認漏れ・自己承認・高額取引**を自動で洗い出します"
+      caption: "**承認漏れ・自己承認・高額取引**を自動で検出"
       name: done
       hold: 2100
   - chapter: {title: 結果の確認とダウンロード, description: 指摘事項をExcelで持ち帰ります, duration: 2200}

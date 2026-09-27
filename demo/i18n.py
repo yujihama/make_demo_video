@@ -153,9 +153,24 @@ def localize(scene: dict, lang: str | None) -> dict:
             if key in ("kind", "_src") or not isinstance(spec, dict):
                 continue
             _merge_text(spec, key, value)
-    if stale:
+    key = (str(path), tuple(stale))
+    if stale and key not in _WARNED:  # 同じ警告は1回だけ出す
+        _WARNED.add(key)
         print(f"警告: {path.name} の steps {stale} は元の文言が変わっています。translate で更新してください", file=sys.stderr)
     return sc
+
+
+_WARNED: set = set()
+
+
+def refresh_src(tr_doc, scene: dict, steps: list[int]) -> None:
+    """翻訳ファイルの指定ステップを「今の原文に対応した訳」として記録し直す（_src を更新）。
+    審査で原文と訳を同じ回に直したときに使う。訳だけ直して原文が変わっていなければ何も変わらない。"""
+    for i in steps:
+        entry = tr_doc["steps"][i]
+        if entry:
+            kind, spec = next(iter(scene["steps"][i].items()))
+            entry["_src"] = src_hash(step_texts(kind, spec))
 
 
 def _merge_text(spec: dict, key: str, value) -> None:

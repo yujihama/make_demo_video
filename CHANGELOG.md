@@ -7,8 +7,11 @@
 - 視線誘導: 入力中の文字を出すキー表示（`type` の既定）、数値の数え上げ（`effect.countup`）、導入前後の比較カード（`compare` ステップ）
 - 多言語版: `bin/demo translate` で翻訳ファイル `scenes/<id>.<lang>.yaml` を作り、`--lang ja,en` で録画1回から言語ごとの完成動画を作る。
   定型文言（まとめ・早送り・保存しました・STEP）も差し替える。英語は単語単位で折り返し、数値の自動強調も言語別
-- Claude による見た目の審査: `--vision` で要所のコマを Claude に見せ、指摘と直し方を JSON で受け取る。`loop --vision` が直し方を反映する
-  （文言の修正は翻訳ファイルへ。文言だけなら撮り直さない）。Claude は API / CLI / ファイル受け渡しのどれでも呼べる（`DEMO_CLAUDE_BACKEND`）
+- Claude Code による見た目の審査と翻訳: ツールは Claude を API や CLI で呼ばず、依頼（コマ画像・観点・回答の形）を `out/**/_handoff/` に
+  書き出して終了コード 3 で止まる。作業中の Claude Code がスキルの手順（`reference/vision-review.md`・`reference/translate.md`）で
+  `response.json` を書き、再実行で取り込む。`loop --vision --resume` で途中から続けられ、`bin/demo pending` で回答待ちを一覧できる
+- 見た目の審査: 要所のコマの指摘と直し方を JSON で受け取り、`loop --vision` が反映する（high は不合格、medium も直し方があれば反映して撮り直す）。
+  文言の修正は翻訳ファイルへ。文言だけなら撮り直さない。審査で原文と訳を同じ回に直したときは、訳を最新の原文に対応した訳として記録する
 - Windows では BIZ UDPゴシック（プロポーショナル版）を使い、英字が等幅に見えないようにした
 - 自己確認ループ: 複数言語の同時判定。同じステップへの `hold` 追加は言語をまたいで大きい方を採る
 

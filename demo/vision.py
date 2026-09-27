@@ -1,4 +1,4 @@
-"""見た目の審査（Claude）: 完成動画の要所のコマを Claude に見せ、見た目の問題と直し方を JSON で受け取る。
+"""見た目の審査（Claude Code）: 完成動画の要所のコマを書き出し、作業中の Claude Code が見て、問題と直し方を JSON で返す。
 
 機械の判定（review.py）では分からない「字幕が大事な所を隠している」「強調が別の所を指している」
 「寄りすぎて数字が切れている」「訳が画面と合っていない」などを見る。
@@ -6,6 +6,7 @@
 
   bin/demo vision out/<id>/run [--lang en]      審査だけ（build/vision.json）
   bin/demo review out/<id>/run --vision         機械の判定＋見た目の審査
+依頼は out/<id>/_handoff/ に書き出される（demo/handoff.py）。審査の手順はスキル demo-video の reference/vision-review.md。
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ from pathlib import Path
 
 from . import scene as scene_mod
 from .build import TimeMap, build_dir
-from .claude_io import ask_json
+from .handoff import ask
 from .compose import COUNTUP_S, frame_at, make_plan
 from .i18n import localize
 from .overlays import plain
@@ -134,7 +135,7 @@ def pick_frames(plan) -> list[dict]:
             for n, (t, step, kind, text) in enumerate(picked)]
 
 
-def review_visual(run_dir: str | Path, lang: str | None = None, backend: str | None = None) -> dict:
+def review_visual(run_dir: str | Path, lang: str | None = None) -> dict:
     run_dir = Path(run_dir)
     m, scene, b, bdir, segs = _load(run_dir, lang)
     tm = TimeMap(segs)
@@ -157,8 +158,8 @@ def review_visual(run_dir: str | Path, lang: str | None = None, backend: str | N
                      f"見せ場: {f['kind']}）: {f['expect']}")
     prompt = (f"## 動画\n題名: {scene['title']}\n字幕とカードの言語: {plan.lang}\n\n"
               f"## コマ（画像は番号順に並んでいます）\n" + "\n".join(lines) + "\n\n" + RUBRIC)
-    result = ask_json(f"vision-{m['scene']}-{plan.lang}", SYSTEM, prompt, SCHEMA, paths,
-                      workdir=run_dir.parent, backend=backend)
+    result = ask(f"vision-{m['scene']}-{plan.lang}", SYSTEM, prompt, SCHEMA, paths, workdir=run_dir.parent,
+                 labels=[f"{f['t']:.1f}s {f['kind']}" for f in frames])
     for fd in result["findings"]:  # コマ番号からステップを補う
         if fd.get("step") is None and 0 <= fd["frame"] < len(frames):
             fd["step"] = frames[fd["frame"]]["step"]

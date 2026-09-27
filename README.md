@@ -3,7 +3,7 @@
 localhost で動く Web アプリのデモ動画を、YAML のシーン定義から撮影・編集・自己確認するツール一式です。
 同じ YAML からは何度撮っても同じ動画になります。
 操作ログから場面に応じた演出（ズーム・クリックの波紋・スポットライト・強調字幕・章カード・保存通知・早送り表示・キー表示・数え上げ・導入前後の比較）を自動で付けます。
-字幕は読み切れる長さかを自動で確かめ、1回の録画から多言語版を作り、Claude が見た目を審査して直し方まで返します。
+字幕は読み切れる長さかを自動で確かめ、1回の録画から多言語版を作ります。見た目の審査と翻訳は、作業中の Claude Code 自身がスキルの手順に沿って行います。
 
 - **browser モード**: Playwright でブラウザ内を録画し、描画カーソルを重ねる。軽く、再現性が高い
 - **desktop モード**: 仮想画面（Xvfb）全体を録画し、実カーソルで操作する。ダウンロードしたファイルを LibreOffice Calc で開く場面まで1本に撮れる
@@ -31,8 +31,8 @@ localhost で動く Web アプリのデモ動画を、YAML のシーン定義か
 - desktop モードの録画イメージをホストの uid（1000）で実行し、Calc 表示まで含めて判定合格
 - Python 3.10（Ubuntu 22.04 相当）での構文とシーン検証
 - 1.1.0 の演出（合成エンジン）を Ubuntu 24.04 で `install.sh` → `verify.sh` まで確認。フォントは Noto Sans CJK を自動で使用、30 秒の動画の合成に約 22 秒
-- 1.2.0（読み切れる字幕・視線誘導・多言語版）を Ubuntu 24.04 で `install.sh` → `verify.sh` まで確認（日本語版・英語版とも判定合格）。Claude を呼べない環境で `--vision` が依頼を書き出して終了コード 3 で止まることも確認
-- Claude の API / CLI を実際に呼ぶ経路は、検証環境に認証情報が無かったため未確認（依頼と回答の受け渡し・回答の反映はファイル受け渡しで確認）
+- 1.2.0（読み切れる字幕・視線誘導・多言語版）を Ubuntu 24.04 で `install.sh` → `verify.sh` まで確認（日本語版・英語版とも判定合格）。`--vision` が依頼を書き出して終了コード 3 で止まることも確認
+- Claude Code がスキルの手順で審査・翻訳する流れを、Core シーン（日本語・英語）で確認。1回目の審査の指摘を `loop` が反映して撮り直し、2回目の審査で解消を確かめて合格
 - Debian 12、および実機の Linux ホストから Docker を直接叩く desktop モード（`install.sh --desktop` → `verify.sh --desktop`）は未確認
 
 ## 2. 同梱物
@@ -51,9 +51,10 @@ demo-video-kit/
 │   ├── core_audit.yaml        アップロード→実行→結果→ダウンロード→導入効果（browser）
 │   ├── core_audit.en.yaml     上の英語訳（bin/demo translate で作成）
 │   ├── core_audit_desktop.yaml 同上＋Excel を Calc で開く（desktop）
-│   └── policy_qa.yaml         文章入力→回答表示（browser）
+│   ├── policy_qa.yaml         文章入力→回答表示（browser）
+│   └── policy_qa.en.yaml      上の英語訳
 ├── sample-app/                動作確認用の対象アプリ（Docker、localhost:8080）
-├── .claude/skills/demo-video/ Claude Code 用スキル
+├── .claude/skills/demo-video/ Claude Code 用スキル（SKILL.md と、審査・翻訳の手順 reference/）
 └── docs/RESULTS.md            検証結果
 ```
 
@@ -114,11 +115,13 @@ cd demo-video-kit
 | 再現性の確認 | `bin/demo repro scenes/x.yaml -n 3` | `out/x/repro/repro.json` |
 | 翻訳ファイルを作る | `bin/demo translate scenes/x.yaml --lang en` | `scenes/x.en.yaml` |
 | 見た目の審査だけ | `bin/demo vision out/x/run [--lang en]` | `build/vision.json` |
+| 止まったループの続き | `bin/demo loop scenes/x.yaml … --resume` | |
+| 回答待ちの依頼の一覧 | `bin/demo pending` | 依頼フォルダ（無ければ終了コード 0） |
 
 `build` `review` `make` `loop` は `--lang ja,en` のように言語をカンマ区切りで指定できます（録画は1回、後工程と判定を言語ごとに行う）。
-`review` `make` `loop` に `--vision` を付けると、Claude の見た目の審査も合格判定に入ります。
+`review` `make` `loop` に `--vision` を付けると、Claude Code の見た目の審査も合格判定に入ります（4.7）。
 
-`loop` はシーン YAML を直接書き換えます（コメントと書式は保ちます）。`--fixer claude` を付けると修正を Claude Code（`claude -p`、要ログイン）に任せます。
+`loop` はシーン YAML と翻訳ファイルを直接書き換えます（コメントと書式は保ちます）。規則で直せない失敗が残ると止まるので、`review*.json` の `hint` を見て YAML を直します（Claude Code がスキルの手順で行えます）。
 
 ### 4.2 出力物
 
@@ -129,7 +132,7 @@ cd demo-video-kit
 | `build/chapters.json` | 章（タイトルと開始・終了秒） |
 | `build/build.json` | 後工程の記録（早送り区間、演出ごとの数、字幕ごとの読み切り判定、合成にかかった秒数） |
 | `build-<lang>/` | 他の言語の完成動画一式（`--lang en` なら `build-en/`） |
-| `build/vision.json` | Claude の見た目の審査（コマごとの指摘と直し方）。審査したコマは `build/vision/` |
+| `build/vision.json` | Claude Code の見た目の審査（コマごとの指摘と直し方）。審査したコマは `build/vision/` |
 | `raw.webm` / `raw.mp4` | 加工前の録画 |
 | `events.json` | 操作ログ（各ステップの時刻・対象・字幕） |
 | `review.json` | 判定結果と、不合格時の直し方の手掛かり（他の言語は `review-<lang>.json`） |
@@ -221,7 +224,7 @@ steps:
 録画は1回のまま、字幕・章カード・吹き出し・比較カード・定型文言（「まとめ」「早送り」「保存しました」など）を言語ごとに差し替えた完成動画を作ります。アプリの画面は元の言語のまま映ります。
 
 ```bash
-bin/demo translate scenes/core_audit.yaml --lang en       # scenes/core_audit.en.yaml を作る（Claude が翻訳）
+bin/demo translate scenes/core_audit.yaml --lang en       # 終了コード 3 → Claude Code が訳を書く → 再実行で scenes/core_audit.en.yaml
 bin/demo make scenes/core_audit.yaml --lang ja,en         # build/（日本語）と build-en/（英語）を作る
 bin/demo loop scenes/core_audit.yaml --lang ja,en         # 両方の言語が合格するまで直す
 ```
@@ -231,24 +234,40 @@ bin/demo loop scenes/core_audit.yaml --lang ja,en         # 両方の言語が�
 - シーンの元の言語は `lang: ja`（既定）で指定します
 - 定型文言が用意されている言語は ja / en / zh / ko です。それ以外の言語は英語の定型文言になるので、翻訳ファイルの `ui:` で上書きします
 
-### 4.7 Claude による見た目の審査
+### 4.7 Claude Code による見た目の審査と翻訳
 
-`--vision` を付けると、完成動画の要所のコマを Claude に見せて審査させます。対象は、字幕が出そろった時点、スポットライト・数え上げ・通知の見せ場、各種カードです。
+見た目の審査と翻訳のように判断が要る作業は、**作業中の Claude Code 自身が行います。** ツールは Claude を API や CLI で呼びません（API キーやログインは不要です）。
 
+1. ツールが依頼を `out/**/_handoff/<名前>-<ハッシュ>/` に書き出し、終了コード 3 で止まる
+   - `request.md`: 何をどう判断するか
+   - `sheet.jpg`: コマの一覧
+   - `image_NN.jpg`: 個々のコマ
+   - `schema.json`: 回答の形
+2. Claude Code が画像を見て、`schema.json` どおりの `response.json` を同じフォルダに書く
+3. 同じコマンドをもう一度実行すると回答が取り込まれる（`loop` は `--resume` を付けて途中から続ける）
+
+手順はスキル `.claude/skills/demo-video/` にまとめてあります。Claude Code はスキルを読んで、この流れを自分で回します。
+
+| ファイル | 内容 |
+|---|---|
+| `SKILL.md` | 全体の流れと、終了コード 3 で止まったときの対応 |
+| `reference/vision-review.md` | 審査の手順・観点・重さ・直し方の書き方・回答例 |
+| `reference/translate.md` | 翻訳の決まり・回答例 |
+
+回答待ちの依頼は `bin/demo pending` で一覧できます。依頼の中身（指示文・コマ）が変わると別のフォルダになるので、古い回答が取り込まれることはありません。
+
+**見た目の審査**（`--vision`）
+
+- 対象のコマ: 字幕が出そろった時点、スポットライト・数え上げ・通知の見せ場、各種カード、まとめ
 - 観点: 字幕や吹き出しが大事な所を隠していないか、文字が読めるか、強調が正しい対象を指しているか、字幕と画面が食い違っていないか、寄りすぎで情報が切れていないか、枠からはみ出していないか、指定の言語か
-- 指摘には重さ（high / medium / low）と直し方が付きます。high があると不合格です。medium は合格扱いですが、他の理由でループが回るときに一緒に直します
-- `bin/demo loop --vision` は直し方をそのまま反映します。`hold` と `effect` と `style.max_zoom` はシーン YAML に、字幕と吹き出しの文言は元の言語ならシーン YAML に、それ以外は翻訳ファイルに入れます。文言だけの修正なら撮り直さずに後工程からやり直します
+- 指摘には重さ（high / medium / low）と直し方が付く。high があると不合格。medium は合格扱いだが、直し方があれば `loop` が反映してもう一度撮って確かめる
+- 直し方の反映先: `hold` と `effect` と `style.max_zoom` はシーン YAML、字幕と吹き出しの文言は元の言語ならシーン YAML・それ以外は翻訳ファイル。文言だけの修正なら撮り直さずに後工程からやり直す
 
-Claude を呼ぶ手段は環境変数 `DEMO_CLAUDE_BACKEND` で選びます。
-
-| 値 | 手段 | 必要なもの |
-|---|---|---|
-| `api` | Anthropic SDK（構造化出力で JSON を受け取る） | `ANTHROPIC_API_KEY`、または `ant auth login` |
-| `cli` | Claude Code（`claude -p`） | `claude` がログイン済み |
-| `file` | 依頼（指示文・画像・スキーマ）を `out/<id>/_claude/…/` に書き出し、`response.json` が置かれるのを待つ | なし（人や別のエージェントが回答する） |
-| `auto`（既定） | api → cli → file の順に使えるものを使う | |
-
-モデルは `DEMO_CLAUDE_MODEL`（既定 `claude-opus-5`）で変えられます。`file` のときコマンドは終了コード 3 で止まるので、回答を置いてから同じコマンドをもう一度実行します。
+```bash
+bin/demo loop scenes/core_audit.yaml --lang ja,en --vision            # 終了コード 3 で止まる
+# （Claude Code が依頼フォルダの response.json を書く）
+bin/demo loop scenes/core_audit.yaml --lang ja,en --vision --resume   # 取り込んで続きから
+```
 
 ### 4.8 desktop モードとネットワーク
 
@@ -287,7 +306,8 @@ desktop モード（`mode: desktop`）は録画コンテナの中からアプリ
 | 判定 `steps` が不合格（overrun） | アプリの処理が `wait_for.duration` より長い。`bin/demo loop` で自動で伸ばせる |
 | 判定 `freeze` が不合格 | 見せ場の `hold` が長すぎる。3 秒以内を目安に。`loop` で自動で縮められる |
 | 判定 `readability` が不合格 | 字幕に対して表示が短い。`loop` で `hold` を伸ばすか、字幕を短くする |
-| 終了コード 3「Claude への依頼を書き出しました」 | Claude を自動で呼べなかった（API キーも `claude` のログインも無い）。`response.json` を置くか、`ANTHROPIC_API_KEY` を設定する |
+| 終了コード 3「Claude Code の判断が必要です」 | 見た目の審査か翻訳の依頼を書き出した。表示された依頼フォルダの `request.md` に沿って `response.json` を書き、同じコマンドを再実行する（`loop` は `--resume`）。手順はスキルの `reference/` |
+| 再実行で「response.json がスキーマに合いません」 | 回答の形が違う。表示された項目を `schema.json` に合わせて直す |
 | `翻訳ファイルがありません` / `ステップ数がシーンと合いません` | `bin/demo translate scenes/x.yaml --lang <言語>` で作る／作り直す |
 | desktop で `同期マーカーが見つかりません` | アプリに届いていない。`DEMO_APP_CONTAINER` / `DEMO_NETWORK` を確認する |
 | desktop で `permission denied`（out/） | 以前 root で作られた `out/` が残っている。`sudo rm -rf out` |

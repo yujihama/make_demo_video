@@ -1,9 +1,10 @@
-"""多言語版の翻訳ファイルを作る（Claude で翻訳）。
+"""多言語版の翻訳ファイルを作る（翻訳は作業中の Claude Code が行う）。
 
   bin/demo translate scenes/<id>.yaml --lang en [--force]
 
 `scenes/<id>.<lang>.yaml` を作る。既にあれば、元の文言が変わったステップだけ訳し直し、
 人が直した訳（元の文言が変わっていないもの）はそのまま残す。--force で全部訳し直す。
+訳す文言は out/_handoff/ に依頼として書き出され、Claude Code が response.json に訳を書く（手順はスキルの reference/translate.md）。
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ import yaml
 
 from . import scene as scene_mod
 from . import yamlio
-from .claude_io import ask_json
+from .handoff import ask
 from .i18n import _set, scene_lang, scene_texts, src_hash, translation_path
 
 LANG_NAMES = {"ja": "日本語", "en": "英語", "zh": "中国語（簡体字）", "ko": "韓国語", "fr": "フランス語", "de": "ドイツ語", "es": "スペイン語"}
@@ -30,7 +31,7 @@ SCHEMA = {
 SYSTEM = "あなたは製品デモ動画の字幕翻訳者です。短く、自然で、画面を見ながら読み切れる字幕にします。"
 
 
-def translate(scene_path: str | Path, lang: str, force: bool = False, backend: str | None = None) -> Path:
+def translate(scene_path: str | Path, lang: str, force: bool = False) -> Path:
     scene = scene_mod.load(scene_path)
     base = scene_lang(scene)
     if lang == base:
@@ -59,9 +60,9 @@ def translate(scene_path: str | Path, lang: str, force: bool = False, backend: s
 
     got = {}
     if items:
-        got = {it["id"]: it["text"] for it in ask_json(
+        got = {it["id"]: it["text"] for it in ask(
             f"translate-{scene['id']}-{lang}", SYSTEM, _prompt(scene, base, lang, items), SCHEMA,
-            workdir=Path("out"), backend=backend)["items"]}
+            workdir=Path("out"))["items"]}
         missing = [it["id"] for it in items if it["id"] not in got]
         if missing:
             raise RuntimeError(f"訳が返ってこなかった項目があります: {missing}")

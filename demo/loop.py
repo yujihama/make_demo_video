@@ -1,15 +1,16 @@
 """自己確認ループ（P5）: 録画 → 後工程 → 合格判定 → 不合格ならシーン YAML を直して再録画、を合格まで繰り返す。
 
-  bin/demo loop <scene.yaml> [--lang ja,en] [--vision] [--fixer rules|claude] [--max 5]
+  bin/demo loop <scene.yaml> [--lang ja,en] [--vision] [--max 5] [--resume]
 
-直すのはシーン YAML だけ（アプリやランナーのコードには触らない）。
-  rules  : review.json の失敗項目から決まった規則で YAML を直す（人も LLM も介さない）
-  claude : `claude -p` に review.json とシーン YAML を渡し、YAML の編集だけを許可して直させる
-各反復の review.json と YAML の差分は <out>/iterN/ に残す。
+直すのはシーン YAML と翻訳ファイルだけ（アプリやランナーのコードには触らない）。
+review.json の失敗項目から決まった規則で直す（rules_fix）。規則で直せないものは止まり、
+Claude Code がスキル demo-video の手順に沿って YAML を直す。
 
 --lang を複数指定すると、録画は1回のまま言語ごとに後工程と判定を行い、全言語が合格するまで回す。
---vision を付けると Claude の見た目の審査も判定に入れ、その直し方（fix）も反映する。
+--vision を付けると Claude Code の見た目の審査も判定に入れ、その直し方（fix）も反映する。
+  審査の依頼を書き出した時点で止まる（終了コード 3）。Claude Code が回答を書いたら --resume で続きから回す。
 字幕の文言の直し（caption / effect.callout）は、元の言語ならシーン YAML に、それ以外は翻訳ファイルに入れる。
+各反復の review*.json と YAML の差分は <out>/iterN/ に、途中の状態は <out>/state.json に残す。
 """
 from __future__ import annotations
 
@@ -18,13 +19,13 @@ import difflib
 import json
 import math
 import shutil
-import subprocess
 from pathlib import Path
 
 from . import scene as scene_mod
 from . import yamlio
 from .build import build, build_dir
-from .i18n import scene_lang, translation_path
+from .handoff import NeedsResponse
+from .i18n import refresh_src, scene_lang, translation_path
 from .review import review
 
 def _raw_time(b: dict, t_final: float) -> float:
@@ -50,7 +51,7 @@ def rules_fix(scene_path: Path, run_dir: Path, rv: dict, lang: str | None = None
     if lang and lang != scene_lang(src):
         tr_path = translation_path(src, lang)
         tr_doc = yamlio.load(tr_path)
-    notes = []
+    notes, tr_touched = [], []
     held = {} if held is None else held  # 同じステップへの hold 追加は1回（大きい方）にまとめる
 
     def add_hold(i: int, ms: int, why: str):
@@ -123,6 +124,7 @@ def rules_fix(scene_path: Path, run_dir: Path, rv: dict, lang: str | None = None
             elif path in ("caption", "effect.callout") and tr_doc is not None:
                 entry = tr_doc["steps"][step]
                 _set_path(entry, path, value)
+                tr_touched.append(step)
                 notes.append(f"{tr_path.name} steps[{step}].{path} → {value}（見た目の審査）")
             else:
                 spec = next(iter(doc["steps"][step].values()))
@@ -131,6 +133,8 @@ def rules_fix(scene_path: Path, run_dir: Path, rv: dict, lang: str | None = None
         else:
             notes.append(f"{c}: 自動修正の規則なし（{f.get('hint')}）")
     if tr_doc is not None:
+        # 審査で直した訳は、今の原文（同じ回に原文も直していればその新しい原文）に対応した訳として記録する
+        refresh_src(tr_doc, scene_mod.load(scene_path), tr_touched)
         yamlio.dump(tr_doc, tr_path)
     yamlio.dump(doc, scene_path)
     return notes
@@ -155,65 +159,65 @@ def _set_path(d, path: str, value) -> None:
     d[keys[-1]] = value
 
 
-CLAUDE_PROMPT = """デモ動画の自己確認で不合格になりました。シーン定義 {scene} だけを編集して、次の録画で合格するように直してください。
-- 変更してよいのは hold / duration / pace / chapter.duration / caption の値だけです。ステップの追加・削除・testid の変更はしないでください。
-- review.json の hint を手掛かりにし、変更は最小限にしてください。
-- 編集が終わったら、変えた項目を1行ずつ出力してください。
-
-review.json の失敗項目:
-{failures}
-"""
-
-
-def claude_fix(scene_path: Path, run_dir: Path, rv: dict) -> list[str]:
-    prompt = CLAUDE_PROMPT.format(scene=scene_path.as_posix(), failures=json.dumps(rv["failures"], ensure_ascii=False, indent=1))
-    r = subprocess.run(["claude", "-p", prompt, "--allowedTools", f"Read,Edit({scene_path.as_posix()})",
-                        "--permission-mode", "acceptEdits", "--max-turns", "8"],
-                       capture_output=True, text=True, encoding="utf-8")
-    if r.returncode != 0:
-        raise RuntimeError(f"claude -p が失敗しました: {(r.stdout + r.stderr).strip()[:300]}")
-    return [line for line in r.stdout.splitlines() if line.strip()]
-
-
-def loop(scene_path: Path, out: Path, fixer: str = "rules", max_iter: int = 5, langs: list[str] | None = None,
-         vision: bool = False, backend: str | None = None) -> dict:
+def loop(scene_path: Path, out: Path, max_iter: int = 5, langs: list[str] | None = None,
+         vision: bool = False, resume: bool = False) -> dict:
     from .__main__ import _record
-    if out.exists():
-        shutil.rmtree(out)
-    out.mkdir(parents=True)
-    history = []
-    reuse: Path | None = None
+    state_file = out / "state.json"
     tr_files = [translation_path(scene_mod.load(scene_path), lg) for lg in (langs or []) if lg]
     snapshot = lambda: {str(f): f.read_text(encoding="utf-8") for f in [scene_path, *tr_files] if f.exists()}
-    for n in range(1, max_iter + 1):
+    state = json.loads(state_file.read_text(encoding="utf-8")) if resume and state_file.exists() else None
+    if state is None:
+        if out.exists():
+            shutil.rmtree(out)
+        out.mkdir(parents=True)
+        state = {"n": 1, "history": [], "reuse": None, "before": None}
+    else:
+        print(f"== 途中から再開（iter {state['n']}）", flush=True)
+    history = state["history"]
+    n = state["n"]
+    while n <= max_iter:
         it = out / f"iter{n}"
-        before = snapshot()
+        before = state["before"] or snapshot()
         sc = scene_mod.load(scene_path)
-        if reuse is not None:
+        if (it / "events.json").exists():
+            print(f"== iter {n}: 録画済み（後工程と判定から）", flush=True)
+        elif state["reuse"]:
             # 直したのが文言（翻訳ファイル）だけなら撮り直さず、前回の録画で後工程からやり直す
             print(f"== iter {n}: 前回の録画を使って後工程から", flush=True)
-            shutil.copytree(reuse, it, ignore=shutil.ignore_patterns("build*", "review*.json"))
+            shutil.copytree(state["reuse"], it, ignore=shutil.ignore_patterns("build*", "review*.json"))
         else:
             print(f"== iter {n}: record", flush=True)
             _record(scene_path, it, sc)
-        rvs = {}
+        rvs, waiting = {}, None
         for lang in langs or [None]:
             build(it, lang=lang)
-            rvs[lang] = review(it, lang, vision=vision, backend=backend)
+            try:
+                rvs[lang] = review(it, lang, vision=vision)
+            except NeedsResponse as e:  # 他の言語の依頼も書き出してからまとめて止まる
+                waiting = e if waiting is None else waiting + e
+                continue
             rv = rvs[lang]
             print(f"   review[{rv.get('lang')}]: {'PASS' if rv['pass'] else 'FAIL ' + ', '.join(f['check'] for f in rv['failures'])}",
                   flush=True)
+        if waiting is not None:
+            state.update({"n": n, "history": history, "before": before})
+            state_file.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
+            raise waiting
         all_pass = all(r["pass"] for r in rvs.values())
         entry = {"iter": n, "pass": all_pass,
                  "failures": [{"lang": r.get("lang"), "check": f["check"], "detail": f["detail"]}
                               for r in rvs.values() for f in r["failures"]]}
-        if all_pass:
-            history.append(entry)
+        history.append(entry)
+        # 合格でも、見た目の審査に medium の直し方があれば反映してもう一度確かめる（最後の回を除く）
+        suggested = any(r.get("suggested") for r in rvs.values())
+        if all_pass and (not suggested or n >= max_iter):
             break
         notes, held = [], {}
-        for lang, rv in rvs.items():
-            if not rv["pass"]:
-                notes += (rules_fix(scene_path, it, rv, lang, held) if fixer == "rules" else claude_fix(scene_path, it, rv))
+        base = scene_lang(scene_mod.load(scene_path))
+        # 原文の言語を先に直す（訳の _src を新しい原文で記録するため）
+        for lang, rv in sorted(rvs.items(), key=lambda kv: kv[0] not in (None, base)):
+            if not rv["pass"] or rv.get("suggested"):
+                notes += rules_fix(scene_path, it, rv, lang, held)
         after = snapshot()
         diff = "".join("".join(difflib.unified_diff(before.get(k, "").splitlines(True), after.get(k, "").splitlines(True),
                                                     f"before/{Path(k).name}", f"after/{Path(k).name}")) for k in after)
@@ -221,14 +225,17 @@ def loop(scene_path: Path, out: Path, fixer: str = "rules", max_iter: int = 5, l
         entry["fix"] = notes
         for x in notes:
             print(f"   fix: {x}", flush=True)
-        history.append(entry)
         if before == after:
-            print("   YAML が変わらなかったため停止", flush=True)
+            print("   規則では直せないため停止。review*.json の hint を見て YAML を直してください", flush=True)
             break
         scene_key = str(scene_path)
-        reuse = it if before.get(scene_key) == after.get(scene_key) else None
-    result = {"scene": str(scene_path), "fixer": fixer, "iterations": len(history), "pass": history[-1]["pass"], "history": history}
+        state["reuse"] = str(it) if before.get(scene_key) == after.get(scene_key) else None
+        state["before"] = None
+        n += 1
+    result = {"scene": str(scene_path), "iterations": len(history), "pass": bool(history and history[-1]["pass"]),
+              "history": history}
     (out / "loop.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    state_file.unlink(missing_ok=True)
     return result
 
 
@@ -236,14 +243,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("scene", type=Path)
     ap.add_argument("--out", type=Path)
-    ap.add_argument("--fixer", choices=["rules", "claude"], default="rules")
     ap.add_argument("--max", type=int, default=5)
     ap.add_argument("--lang")
     ap.add_argument("--vision", action="store_true")
     a = ap.parse_args()
     sc = scene_mod.load(a.scene)
-    r = loop(a.scene, a.out or Path("out") / sc["id"] / "loop", a.fixer, a.max,
-             a.lang.split(",") if a.lang else None, a.vision)
+    r = loop(a.scene, a.out or Path("out") / sc["id"] / "loop", a.max, a.lang.split(",") if a.lang else None, a.vision)
     print(json.dumps({k: r[k] for k in ("iterations", "pass")}, ensure_ascii=False))
 
 

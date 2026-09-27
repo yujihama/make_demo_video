@@ -21,8 +21,8 @@ steps:
     _src: 165cc62f
     caption: '**One click** starts the audit agent'
   - kind: wait_for
-    _src: 5de1c76d
-    caption: It flags **missing approvals, self-approvals and large amounts**
+    _src: b370ac8f
+    caption: Checks every line against **3 rules**
   - kind: chapter
     _src: 170a0c2b
     title: Review and download
