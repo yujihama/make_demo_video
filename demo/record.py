@@ -16,6 +16,7 @@ from pathlib import Path
 from playwright.sync_api import Page, sync_playwright
 
 from . import scene as scene_mod
+from .style import scene_style
 
 ASSETS = Path(__file__).with_name("assets")
 SYNC_COLOR = "#ff00ff"
@@ -54,6 +55,19 @@ class Recorder:
         loc.wait_for(state="visible", timeout=15000)
         loc.scroll_into_view_if_needed()
         box = loc.bounding_box()
+        # 一部しか見えていなければ、全体が見える位置まで滑らかにスクロールする（演出の枠が切れないように）
+        vh = self.page.viewport_size["height"] if self.page.viewport_size else self.page.evaluate("innerHeight")
+        margin = 80
+        delta = 0
+        if box["y"] + box["height"] > vh - margin:
+            delta = min(box["y"] + box["height"] - (vh - margin), box["y"] - margin)
+        elif box["y"] < margin:
+            delta = box["y"] - margin
+        if abs(delta) > 4:
+            self.page.evaluate("([d, b]) => window.scrollBy({top: d, behavior: b})", [delta, "instant" if self.dry else "smooth"])
+            self.page.wait_for_function(
+                "() => new Promise(r => { let y = scrollY; setTimeout(() => r(scrollY === y), 120); })", timeout=5000)
+            box = loc.bounding_box()
         return loc, (box["x"] + box["width"] / 2, box["y"] + box["height"] / 2), box
 
     def move(self, xy: tuple[float, float], idx: int) -> None:
@@ -157,7 +171,10 @@ class Recorder:
         if "text" in spec:
             loc = loc.filter(has_text=spec["text"])
         loc.first.wait_for(state="visible", timeout=spec.get("timeout", 30000))
-        ev["act"] = self.now()
+        ev["act"] = ev["done"] = self.now()
+        box = loc.first.bounding_box()
+        if box:  # 完了時に光らせる（パルス）位置
+            ev["box"] = [round(v) for v in (box["x"], box["y"], box["width"], box["height"])]
         # アプリ側の処理時間は毎回揺れる（ポーリング間隔など）。duration を指定すると
         # ステップ長をその値に固定し、以降のタイムラインを決定的にする。
         if "duration" in spec and not self.dry:
@@ -171,8 +188,12 @@ class Recorder:
     def do_chapter(self, i, spec, ev, pace):
         if self.dry:
             return
-        self.page.evaluate("([t,d,ms])=>window.__demo.chapter(t,d,ms)",
-                           [spec["title"], spec.get("description", ""), spec.get("duration", 2200)])
+        ms = spec.get("duration", 2200)
+        if scene_style(self.scene)["effects"] == "simple":
+            self.page.evaluate("([t,d,ms])=>window.__demo.chapter(t,d,ms)", [spec["title"], spec.get("description", ""), ms])
+        else:
+            # rich: 章カードは後工程で重ねる（背景ぼかし・進捗つき）。録画側は間だけ取る
+            self.wait(ms)
 
     def do_pause(self, i, spec, ev, pace):
         self.wait(spec["ms"])
@@ -184,7 +205,10 @@ class Recorder:
             raise scene_mod.SceneError("open_download の前に download ステップが必要です")
         ev["act"] = self.now()
         if not self.dry:
-            self.screen.open_in_calc(self.last_download, spec.get("hold", 3000))
+            def ready():  # Calc の窓が出た時刻と、見せたい範囲（画面座標）を残す
+                ev["act"] = self.now()
+                ev["screen_box"] = list(self.screen.CALC_FOCUS)
+            self.screen.open_in_calc(self.last_download, spec.get("hold", 3000), on_ready=ready)
             spec["hold"] = 0
 
 

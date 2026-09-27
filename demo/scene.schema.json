@@ -2,75 +2,543 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "デモ動画シーン定義",
   "type": "object",
-  "required": ["id", "title", "url", "steps"],
+  "required": [
+    "id",
+    "title",
+    "url",
+    "steps"
+  ],
   "additionalProperties": false,
   "properties": {
-    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$", "description": "出力ファイル名に使う識別子"},
-    "title": {"type": "string"},
-    "url": {"type": "string", "description": "撮影開始時に開く URL（localhost の対象アプリ）"},
-    "mode": {"enum": ["browser", "desktop"], "description": "browser=Playwright 録画(P2), desktop=Xvfb 画面録画(P3)"},
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "description": "出力ファイル名に使う識別子"
+    },
+    "title": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string",
+      "description": "撮影開始時に開く URL（localhost の対象アプリ）"
+    },
+    "mode": {
+      "enum": [
+        "browser",
+        "desktop"
+      ],
+      "description": "browser=Playwright 録画(P2), desktop=Xvfb 画面録画(P3)"
+    },
     "viewport": {
-      "type": "object", "additionalProperties": false, "required": ["width", "height"],
-      "properties": {"width": {"type": "integer", "minimum": 640}, "height": {"type": "integer", "minimum": 360}}
-    },
-    "zoom": {"type": "number", "minimum": 0.5, "maximum": 3, "description": "body に掛ける CSS zoom。録画は viewport の CSS ピクセル寸法で撮られるため、文字を大きく見せたいときに使う"},
-    "cursor": {"enum": ["ghost", "smooth", "none"], "description": "ghost=playwriter 描画, smooth=smooth-cursor 軌跡+追従描画"},
-    "seed": {"type": "integer"},
-    "pace": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "width",
+        "height"
+      ],
       "properties": {
-        "before_action": {"type": "integer", "minimum": 0, "description": "カーソル到着から操作までの間 (ms)"},
-        "after_action": {"type": "integer", "minimum": 0, "description": "操作後に画面を見せる間 (ms)"}
-      }
-    },
-    "review": {
-      "type": "object", "additionalProperties": false,
-      "description": "自己確認ループ（P5）の合格基準",
-      "properties": {
-        "max_duration": {"type": "number"},
-        "min_duration": {"type": "number"},
-        "max_freeze": {"type": "number", "description": "許容する最長静止秒数（後工程後）"},
-        "expect_text": {
-          "type": "array", "description": "指定ステップの直後の画面に映るべき文字列",
-          "items": {"type": "object", "required": ["after", "text"], "additionalProperties": false,
-                    "properties": {"after": {"type": "string"}, "text": {"type": "string"}}}
+        "width": {
+          "type": "integer",
+          "minimum": 640
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 360
         }
       }
     },
-    "steps": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}}
+    "zoom": {
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 3,
+      "description": "body に掛ける CSS zoom。録画は viewport の CSS ピクセル寸法で撮られるため、文字を大きく見せたいときに使う"
+    },
+    "cursor": {
+      "enum": [
+        "ghost",
+        "smooth",
+        "none"
+      ],
+      "description": "ghost=playwriter 描画, smooth=smooth-cursor 軌跡+追従描画"
+    },
+    "seed": {
+      "type": "integer"
+    },
+    "pace": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "before_action": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "カーソル到着から操作までの間 (ms)"
+        },
+        "after_action": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "操作後に画面を見せる間 (ms)"
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "自己確認ループ（P5）の合格基準",
+      "properties": {
+        "max_duration": {
+          "type": "number"
+        },
+        "min_duration": {
+          "type": "number"
+        },
+        "max_freeze": {
+          "type": "number",
+          "description": "許容する最長静止秒数（後工程後）"
+        },
+        "expect_text": {
+          "type": "array",
+          "description": "指定ステップの直後の画面に映るべき文字列",
+          "items": {
+            "type": "object",
+            "required": [
+              "after",
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "after": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "演出の設定（後工程）。省略時は rich の自動演出",
+      "properties": {
+        "effects": {
+          "enum": [
+            "rich",
+            "simple"
+          ],
+          "description": "rich=カメラ・波紋・スポットライト・字幕パネル・章カードを合成 / simple=焼き込み字幕のみ"
+        },
+        "accent": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "description": "強調色"
+        },
+        "max_zoom": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3,
+          "description": "カメラの最大拡大率"
+        },
+        "caption_label": {
+          "type": "boolean",
+          "description": "字幕の左に章名ラベルを出す"
+        },
+        "speed_badge": {
+          "type": "boolean",
+          "description": "早送り中に「早送り ×N」を出す"
+        },
+        "intro": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "subtitle": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "duration": {
+                  "type": "number",
+                  "minimum": 0.5
+                }
+              }
+            }
+          ],
+          "description": "冒頭のタイトルカード（既定: シーンの title と章の一覧）"
+        },
+        "outro": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "subtitle": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "duration": {
+                  "type": "number",
+                  "minimum": 0.5
+                }
+              }
+            }
+          ],
+          "description": "末尾のまとめカード（既定: 章の一覧にチェック）"
+        }
+      }
+    }
   },
   "$defs": {
-    "target": {"type": "string", "description": "data-testid の値"},
+    "target": {
+      "type": "string",
+      "description": "data-testid の値"
+    },
     "common": {
-      "caption": {"type": "string", "description": "字幕（後工程で SRT 化）"},
-      "hold": {"type": "integer", "minimum": 0, "description": "操作後に追加で見せる時間 (ms)"},
-      "name": {"type": "string", "description": "review.expect_text から参照する名前"}
+      "caption": {
+        "type": "string",
+        "description": "字幕。**語** で強調（強調色の太字）。指定が無ければ数値（8件・1,850,000円 など）を自動で強調"
+      },
+      "hold": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "操作後に追加で見せる時間 (ms)"
+      },
+      "name": {
+        "type": "string",
+        "description": "review.expect_text から参照する名前"
+      }
     },
     "step": {
-      "type": "object", "minProperties": 1, "maxProperties": 1,
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
       "properties": {
-        "chapter": {"type": "object", "required": ["title"], "additionalProperties": false,
-          "properties": {"title": {"type": "string"}, "description": {"type": "string"}, "duration": {"type": "integer", "minimum": 500}}},
-        "click": {"type": "object", "required": ["testid"], "additionalProperties": false,
-          "properties": {"testid": {"$ref": "#/$defs/target"}, "caption": {"type": "string"}, "hold": {"type": "integer"}, "name": {"type": "string"}}},
-        "hover": {"type": "object", "required": ["testid"], "additionalProperties": false,
-          "properties": {"testid": {"$ref": "#/$defs/target"}, "caption": {"type": "string"}, "hold": {"type": "integer"}, "name": {"type": "string"}}},
-        "type": {"type": "object", "required": ["testid", "text"], "additionalProperties": false,
-          "properties": {"testid": {"$ref": "#/$defs/target"}, "text": {"type": "string"}, "caption": {"type": "string"}, "hold": {"type": "integer"}, "name": {"type": "string"}}},
-        "upload": {"type": "object", "required": ["testid", "file"], "additionalProperties": false,
-          "properties": {"testid": {"$ref": "#/$defs/target"}, "file": {"type": "string"}, "caption": {"type": "string"}, "hold": {"type": "integer"}, "name": {"type": "string"}}},
-        "wait_for": {"type": "object", "required": ["testid"], "additionalProperties": false,
-          "properties": {"testid": {"$ref": "#/$defs/target"}, "text": {"type": "string"}, "timeout": {"type": "integer"}, "duration": {"type": "integer", "minimum": 0, "description": "条件成立が早くてもこの長さ (ms) まで待ち、タイムラインを固定する"}, "caption": {"type": "string"}, "hold": {"type": "integer"}, "name": {"type": "string"}}},
-        "download": {"type": "object", "required": ["testid"], "additionalProperties": false,
-          "properties": {"testid": {"$ref": "#/$defs/target"}, "caption": {"type": "string"}, "hold": {"type": "integer"}, "name": {"type": "string"}}},
-        "open_download": {"type": "object", "additionalProperties": false,
+        "chapter": {
+          "type": "object",
+          "required": [
+            "title"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "duration": {
+              "type": "integer",
+              "minimum": 500
+            },
+            "effect": {
+              "$ref": "#/$defs/effect"
+            }
+          }
+        },
+        "click": {
+          "type": "object",
+          "required": [
+            "testid"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "testid": {
+              "$ref": "#/$defs/target"
+            },
+            "caption": {
+              "type": "string"
+            },
+            "hold": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "effect": {
+              "$ref": "#/$defs/effect"
+            }
+          }
+        },
+        "hover": {
+          "type": "object",
+          "required": [
+            "testid"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "testid": {
+              "$ref": "#/$defs/target"
+            },
+            "caption": {
+              "type": "string"
+            },
+            "hold": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "effect": {
+              "$ref": "#/$defs/effect"
+            }
+          }
+        },
+        "type": {
+          "type": "object",
+          "required": [
+            "testid",
+            "text"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "testid": {
+              "$ref": "#/$defs/target"
+            },
+            "text": {
+              "type": "string"
+            },
+            "caption": {
+              "type": "string"
+            },
+            "hold": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "effect": {
+              "$ref": "#/$defs/effect"
+            }
+          }
+        },
+        "upload": {
+          "type": "object",
+          "required": [
+            "testid",
+            "file"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "testid": {
+              "$ref": "#/$defs/target"
+            },
+            "file": {
+              "type": "string"
+            },
+            "caption": {
+              "type": "string"
+            },
+            "hold": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "effect": {
+              "$ref": "#/$defs/effect"
+            }
+          }
+        },
+        "wait_for": {
+          "type": "object",
+          "required": [
+            "testid"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "testid": {
+              "$ref": "#/$defs/target"
+            },
+            "text": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "integer"
+            },
+            "duration": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "条件成立が早くてもこの長さ (ms) まで待ち、タイムラインを固定する"
+            },
+            "caption": {
+              "type": "string"
+            },
+            "hold": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "effect": {
+              "$ref": "#/$defs/effect"
+            }
+          }
+        },
+        "download": {
+          "type": "object",
+          "required": [
+            "testid"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "testid": {
+              "$ref": "#/$defs/target"
+            },
+            "caption": {
+              "type": "string"
+            },
+            "hold": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "effect": {
+              "$ref": "#/$defs/effect"
+            }
+          }
+        },
+        "open_download": {
+          "type": "object",
+          "additionalProperties": false,
           "description": "直前にダウンロードしたファイルをデスクトップアプリ（LibreOffice Calc）で開く。desktop モード専用",
-          "properties": {"caption": {"type": "string"}, "hold": {"type": "integer"}, "name": {"type": "string"}}},
-        "pause": {"oneOf": [{"type": "integer", "minimum": 0},
-          {"type": "object", "required": ["ms"], "additionalProperties": false,
-           "properties": {"ms": {"type": "integer", "minimum": 0}, "caption": {"type": "string"}, "name": {"type": "string"}}}]}
+          "properties": {
+            "caption": {
+              "type": "string"
+            },
+            "hold": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "effect": {
+              "$ref": "#/$defs/effect"
+            }
+          }
+        },
+        "pause": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "object",
+              "required": [
+                "ms"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "caption": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "effect": {
+                  "$ref": "#/$defs/effect"
+                }
+              }
+            }
+          ]
+        }
       },
       "additionalProperties": false
+    },
+    "effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "このステップの演出の上書き。省略時はステップの種類から自動で決まる（demo/style.py）",
+      "properties": {
+        "zoom": {
+          "oneOf": [
+            {
+              "enum": [
+                "focus",
+                "fit",
+                "out"
+              ]
+            },
+            {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 3
+            },
+            {
+              "const": false
+            }
+          ],
+          "description": "focus=対象へ寄る / fit=対象全体が収まる程度 / out=全体 / 数値=拡大率 / false=寄らない"
+        },
+        "ripple": {
+          "type": "boolean",
+          "description": "クリックの波紋"
+        },
+        "spotlight": {
+          "type": "boolean",
+          "description": "対象以外を暗くする"
+        },
+        "callout": {
+          "type": "string",
+          "description": "スポットライト対象に添える吹き出しの文"
+        },
+        "pulse": {
+          "type": "boolean",
+          "description": "完了時に対象を光らせる（wait_for）"
+        },
+        "toast": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "description": "右上の通知。download は既定でファイル名入り"
+        }
+      }
     }
   }
 }

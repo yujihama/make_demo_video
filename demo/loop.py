@@ -58,7 +58,7 @@ def rules_fix(scene_path: Path, run_dir: Path, rv: dict) -> list[str]:
         elif c == "freeze" and d.get("at"):
             s, e = d["at"]
             e = e if e is not None else rv["probe"]["duration"]
-            t_raw = _raw_time(b, (s + e) / 2)
+            t_raw = _raw_time(b, (s + e) / 2 - b.get("lead", 0.0))
             excess = d["longest"] - d["max"] + 0.5
             step = next((x for x in ev["events"] if x["start"] + off <= t_raw <= x["end"] + off), ev["events"][-1])
             spec = next(iter(doc["steps"][step["i"]].values()))

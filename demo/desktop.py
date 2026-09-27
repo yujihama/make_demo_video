@@ -86,7 +86,10 @@ class XScreen:
         if sh("xdotool", "search", "--name", "ファイルを開く|Open File", check=False):
             subprocess.run(["xdotool", "key", "Escape"])
 
-    def open_in_calc(self, path: Path, hold_ms: int):
+    # Calc を最大化したときにデータが見える範囲（画面座標）。後工程のカメラはここへ寄る
+    CALC_FOCUS = (0, int(H * 0.19), int(W * 0.46), int(H * 0.30))
+
+    def open_in_calc(self, path: Path, hold_ms: int, on_ready=None):
         t = time.monotonic()
         self.calc_proc = subprocess.Popen(
             ["soffice", "--calc", "--nologo", "--norestore", "--nodefault", str(path)],
@@ -97,6 +100,8 @@ class XScreen:
         subprocess.run(["xdotool", "windowactivate", "--sync", wid], check=False)
         self.calc_open_s = round(time.monotonic() - t, 2)
         time.sleep(1.0)  # 描画が落ち着くまで
+        if on_ready:
+            on_ready()
         # セル範囲をなぞって「開いたファイルを見ている」動きを付ける
         for dst in [(W * 0.22, H * 0.30), (W * 0.40, H * 0.30), (W * 0.40, H * 0.42)]:
             self.glide(dst)

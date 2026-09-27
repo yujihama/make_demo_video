@@ -53,8 +53,12 @@ def review(run_dir: str | Path) -> dict:
           {"duration": info["duration"], "min": crit["min_duration"], "max": crit["max_duration"]},
           "hold / pace / chapter.duration を調整する")
     check("black", not det["black"], det["black"])
-    end = info["duration"]
-    freezes = [round((e if e is not None else end) - s, 2) for s, e in det["freeze"]]
+    # 静止の判定は本編だけ（イントロ・まとめのカードは意図した静止なので除く）
+    lo = b.get("lead", 0.0)
+    hi = lo + b.get("main_duration", info["duration"])
+    spans = [(max(s, lo), min(e if e is not None else info["duration"], hi)) for s, e in det["freeze"]]
+    det["freeze"] = [(round(s, 3), round(e, 3)) for s, e in spans if e > s]
+    freezes = [round(e - s, 2) for s, e in det["freeze"]]
     longest = max(freezes, default=0)
     where = det["freeze"][freezes.index(longest)] if freezes else None
     check("freeze", longest <= crit["max_freeze"], {"longest": longest, "at": where, "max": crit["max_freeze"]},
