@@ -30,6 +30,7 @@ description: localhost で動く Web アプリのデモ動画を、YAML のシ�
 | 判定だけやり直す | `bin/demo review out/<id>/run [--lang en] [--vision]` | `review*.json` |
 | 翻訳ファイルを作る | `bin/demo translate scenes/<id>.yaml --lang en` | `scenes/<id>.en.yaml` |
 | 回答待ちの依頼を探す | `bin/demo pending` | 依頼フォルダの一覧（無ければ終了コード 0） |
+| 複数シーンを1本に（通し版） | `bin/demo program demos/<id>.yaml [--lang ja,en]` | `out/<id>/program/<id>_<lang>/`（mp4・player.html）と zip |
 | 再現性の確認 | `bin/demo repro scenes/<id>.yaml -n 3` | `out/<id>/repro/repro.json` |
 | 画面確認用の一覧画像 | `.venv/bin/python -m demo.crv <final.mp4> --frames 15` | コンタクトシート PNG |
 
@@ -43,6 +44,17 @@ description: localhost で動く Web アプリのデモ動画を、YAML のシ�
    - 終了コード 3 で止まったら、[reference/vision-review.md](reference/vision-review.md) の手順で表示された依頼フォルダをすべて審査し、`--resume` を付けて同じコマンドを再実行する
    - 規則で直せない失敗が残って止まったら、`review*.json` の `hint` と審査の `suggestion` を読んで YAML を直し、`--resume` を付けずにもう一度 `loop` を回す
 6. 合格したら `out/<id>/loop/iterN/build*/final.mp4` を渡す。最終回の `vision.json` の要約と、残った low の指摘を一緒に伝える
+
+## 通し版（複数シーンを1本にしてファイルで配る）
+
+1. 並べる各シーンを、配る言語すべてで合格させておく（`bin/demo loop scenes/<id>.yaml --lang ja,en --vision`）
+2. `demos/<id>.yaml` を書く（`demos/audit_agent.yaml` が見本。スキーマは `demo/program.schema.json`）。
+   `translations.<lang>` に通し版の題名の訳を入れる
+3. `bin/demo program demos/<id>.yaml --lang ja,en` を実行する。録画は loop の合格回を自動で使う（`run:` で明示もできる）
+4. 「字幕が足りません」の警告が出たら、そのシーンを `loop --lang <lang>` で直してから 3 をやり直す
+5. `.venv/bin/python -m demo.crv out/<id>/program/<id>_<lang>/<id>_<lang>.mp4 --frames 15` でコマを見て、右上のパンくずや下端の進行バーが
+   見せたい物を隠していないか確かめる。隠していれば、そのシーンの `style.guide`（`position: top-left` など）か通し版の `style.guide` で直す
+6. 配るのは `out/<id>/program/<id>_<lang>.zip`（mp4 と player.html）。player.html は展開して mp4 と同じフォルダで開くよう伝える
 
 ## 終了コード 3（Claude Code の判断待ち）への対応
 
@@ -69,6 +81,7 @@ description: localhost で動く Web アプリのデモ動画を、YAML のシ�
 - ステップの種類で自動: クリック系は寄って波紋、`type` はキー表示、`wait_for` は引いて早送り表示＋完了パルス、`hover` はスポットライト、`download` は保存通知、`chapter` は進捗つき章カード。冒頭にタイトル、末尾にまとめ
 - 見せ場（結果の表など）の `hover` には `effect: {callout: 短い一言}` か `effect: {countup: {to: 6, label: 指摘, suffix: 件}}` を付けると伝わりやすい
 - 導入効果は `compare` ステップ（導入前後の比較カード）で最後に見せる
+- 右上のパンくず（シーン名 › 章名）と下端の進行バーは既定で出る。邪魔なら `style: {guide: {breadcrumb: false}}` などで外す
 - 演出が過剰な場面は `effect: {zoom: false, ripple: false}` などで個別に外す。全体をやめるなら `style: {effects: simple}`
 
 ## browser と desktop の使い分け

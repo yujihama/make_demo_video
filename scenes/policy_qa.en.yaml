@@ -15,7 +15,7 @@ steps:
     caption: Just type what you want to know
   - kind: click
     _src: d4ba4687
-    caption: It finds the matching clause and answers
+    caption: Finds the matching clause and answers
   - kind: wait_for
     _src: dfcdf134
     caption: The answer cites the **clause number**

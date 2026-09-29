@@ -3,7 +3,7 @@
 localhost で動く Web アプリのデモ動画を、YAML のシーン定義から撮影・編集・自己確認するツール一式です。
 同じ YAML からは何度撮っても同じ動画になります。
 操作ログから場面に応じた演出（ズーム・クリックの波紋・スポットライト・強調字幕・章カード・保存通知・早送り表示・キー表示・数え上げ・導入前後の比較）を自動で付けます。
-字幕は読み切れる長さかを自動で確かめ、1回の録画から多言語版を作ります。見た目の審査と翻訳は、作業中の Claude Code 自身がスキルの手順に沿って行います。
+字幕は読み切れる長さかを自動で確かめ、1回の録画から多言語版を作ります。複数のシーンは通し版1本にまとめ、今どのシーン・章かを示すガイドと、章へ飛べるプレイヤー付きでファイル配布できます。見た目の審査と翻訳は、作業中の Claude Code 自身がスキルの手順に沿って行います。
 
 - **browser モード**: Playwright でブラウザ内を録画し、描画カーソルを重ねる。軽く、再現性が高い
 - **desktop モード**: 仮想画面（Xvfb）全体を録画し、実カーソルで操作する。ダウンロードしたファイルを LibreOffice Calc で開く場面まで1本に撮れる
@@ -44,7 +44,9 @@ demo-video-kit/
 ├── bin/demo                   実行ラッパー（bin/demo make ... の形で使う）
 ├── requirements.txt           Python 依存
 ├── demo/                      ツール本体（ランナー・後工程・判定・自己確認ループ）
-│   └── scene.schema.json      シーン YAML のスキーマ
+│   ├── scene.schema.json      シーン YAML のスキーマ
+│   ├── program.schema.json    通し版 YAML のスキーマ
+│   └── assets/player.html     通し版に付けるプレイヤーのひな形
 ├── recorder/Dockerfile        desktop モード用の録画イメージ
 ├── scenes/                    シーン定義のサンプル
 │   ├── _template.yaml         全項目の説明付きひな形
@@ -53,6 +55,7 @@ demo-video-kit/
 │   ├── core_audit_desktop.yaml 同上＋Excel を Calc で開く（desktop）
 │   ├── policy_qa.yaml         文章入力→回答表示（browser）
 │   └── policy_qa.en.yaml      上の英語訳
+├── demos/audit_agent.yaml     通し版のサンプル（上の2シーンを1本に）
 ├── sample-app/                動作確認用の対象アプリ（Docker、localhost:8080）
 ├── .claude/skills/demo-video/ Claude Code 用スキル（SKILL.md と、審査・翻訳の手順 reference/）
 └── docs/RESULTS.md            検証結果
@@ -117,6 +120,7 @@ cd demo-video-kit
 | 見た目の審査だけ | `bin/demo vision out/x/run [--lang en]` | `build/vision.json` |
 | 止まったループの続き | `bin/demo loop scenes/x.yaml … --resume` | |
 | 回答待ちの依頼の一覧 | `bin/demo pending` | 依頼フォルダ（無ければ終了コード 0） |
+| 複数シーンを1本に（通し版） | `bin/demo program demos/x.yaml [--lang ja,en]` | `out/x/program/`（章付き mp4・player.html・配布用 zip） |
 
 `build` `review` `make` `loop` は `--lang ja,en` のように言語をカンマ区切りで指定できます（録画は1回、後工程と判定を言語ごとに行う）。
 `review` `make` `loop` に `--vision` を付けると、Claude Code の見た目の審査も合格判定に入ります（4.7）。
@@ -282,7 +286,51 @@ desktop モード（`mode: desktop`）は録画コンテナの中からアプリ
 録画コンテナはホストのユーザー ID で動くため、`out/` のファイルは自分の所有になります。
 録画イメージには x11vnc と noVNC を入れてあります（`demo.desktop --vnc`）が、撮影中の目視は未検証です。
 
-### 4.9 browser と desktop の使い分け
+### 4.9 通し版と常時ガイド
+
+撮影済みの複数シーンを1本にまとめ、ファイルで配れる一式を作ります。録画はし直さず、後工程だけを通し版用にやり直します。
+
+```yaml
+# demos/audit_agent.yaml（スキーマは demo/program.schema.json）
+id: audit_agent
+title: 監査エージェント デモ
+subtitle: 経費の監査 → 規程の質問       # 省略時はシーン名を → でつなぐ
+lang: ja
+scenes:
+  - scenes/core_audit.yaml                # 録画は out/<シーンID>/loop の合格回（無ければ out/<シーンID>/run）
+  - {scene: scenes/policy_qa.yaml, run: out/policy_qa/loop/iter2}   # 録画を明示してもよい
+translations:
+  en: {title: Audit Agent Demo, subtitle: Expense audit → Policy questions}
+```
+
+```bash
+bin/demo loop scenes/core_audit.yaml --lang ja,en      # 先に各シーンを合格させておく
+bin/demo loop scenes/policy_qa.yaml --lang ja,en
+bin/demo program demos/audit_agent.yaml --lang ja,en
+```
+
+出力は `out/<id>/program/<id>_<lang>/` と配布用の `out/<id>/program/<id>_<lang>.zip` です。
+
+| ファイル | 内容 |
+|---|---|
+| `<id>_<lang>.mp4` | 通し版。章メタデータ付き（「1. シーン名 \| 章名」）で、VLC・QuickTime などの章メニューから飛べる |
+| `player.html` | mp4 と同じフォルダで開くプレイヤー。章で区切ったシークバー（上にシーン名の帯）、ホバーで章のサムネイル、目次、前/次の章（`[` `]`）、`#t=90` で途中から |
+| `chapters.json` | シーン → 章の2階層の目次（秒） |
+| `subtitles.srt` | 字幕（映像には焼き込み済み） |
+| `program.json` | 作成結果（パートごとの長さ、読み切れない字幕の数） |
+
+通し版では、最初のカードが通し版の題名とシーンの並び、2つ目以降のシーンの冒頭に「シーン 2 / 2」付きの区切りカード、最後に全シーンのまとめが入ります。
+章カードの小見出しは「シーン 1 · STEP 1 / 3」になります。
+
+**常時ガイド**（単体のシーンにも付きます。`style.effects: rich` のとき）:
+- 右上のパンくず: `[1/2] シーン名 › 章名`。早送り中は先頭に「早送り ×4」が入ります（右上の早送り表示の代わり）
+- 下端の進行バー: 全体の進み具合と、章（細い目盛り）・シーン（太い目盛り）の区切り
+- 章カード・比較カードの間と、冒頭・まとめのカードの間はパンくずを隠します。操作対象がパンくずに重なるときは薄くします
+- パンくずがあるときは、上に出る字幕と保存通知をその下へずらします
+- `style.guide` で調整できます: `{breadcrumb: false}` / `{progress_bar: false}` / `{position: top-left}` / `false`（両方消す）。
+  通し版の `style.guide` は全シーンに効きます
+
+### 4.10 browser と desktop の使い分け
 
 - ブラウザ内で完結する場面は browser。ホストの Chromium だけで動き、3回撮って同じ動画になる
 - ダウンロードしたファイルを開いて見せる場面だけ desktop

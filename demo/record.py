@@ -17,10 +17,9 @@ from playwright.sync_api import Page, sync_playwright
 
 from . import scene as scene_mod
 from .style import scene_style
+from .sync import SYNC_COLOR, SYNC_MS  # noqa: F401  (desktop.py も record から読む)
 
 ASSETS = Path(__file__).with_name("assets")
-SYNC_COLOR = "#ff00ff"
-SYNC_MS = 400
 # Linux の Chromium は UI 言語（ファイル選択ボタン等）を --lang ではなく環境変数で決める
 BROWSER_ENV = {**os.environ, "LANG": "ja_JP.UTF-8", "LANGUAGE": "ja"}
 GHOST_STYLE = "document.addEventListener('DOMContentLoaded',()=>window.__playwriterGhostCursor?.enable({style:'screenstudio',size:28}))"

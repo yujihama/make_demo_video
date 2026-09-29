@@ -10,6 +10,8 @@
   bin/demo repro     <scene.yaml> [-n 3]               同じシーンを N 回撮って再現性を確認（browser モード）
   bin/demo translate <scene.yaml> --lang en [--force]  翻訳ファイル scenes/<id>.en.yaml を作る（訳は Claude Code が書く）
   bin/demo vision    <run_dir> [--lang en]             Claude Code の見た目の審査だけ
+  bin/demo program   <demos/id.yaml> [--lang ja,en] [--no-zip]
+                                                       撮影済みの複数シーンを通し版1本に（章付き mp4 ＋ player.html）
   bin/demo pending                                     回答待ちの依頼（Claude Code が判断するもの）の一覧
 
 --lang はカンマ区切りで複数指定できる（録画は1回、後工程と判定を言語ごとに行う）。省略時はシーンの言語。
@@ -89,6 +91,10 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("scene", type=Path)
     s.add_argument("--lang", required=True)
     s.add_argument("--force", action="store_true")
+    s = sub.add_parser("program")
+    s.add_argument("program", type=Path)
+    s.add_argument("--lang")
+    s.add_argument("--no-zip", action="store_true")
     sub.add_parser("pending")
     a = ap.parse_args(argv)
     try:
@@ -106,6 +112,12 @@ def _run(a) -> int:
         items = pending()
         print("\n".join(str(p) for p in items) if items else "回答待ちの依頼はありません")
         return EXIT_NEEDS_RESPONSE if items else 0
+    if a.cmd == "program":
+        from .program import render
+        for info in _each_lang(_langs(a.lang), lambda lang: render(a.program, lang, not a.no_zip)):
+            print(json.dumps({k: info.get(k) for k in ("lang", "duration", "scenes", "chapters", "readability_issues",
+                                                       "final", "player", "zip")}, ensure_ascii=False))
+        return 0
     if a.cmd == "translate":
         from .translate import translate
         for path in _each_lang([x for x in _langs(a.lang) if x], lambda lang: translate(a.scene, lang, a.force)):

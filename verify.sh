@@ -43,6 +43,16 @@ for s in "${scenes[@]}"; do
   fi
 done
 
+if [[ $failed == 0 ]]; then
+  echo; echo "== program demos/audit_agent.yaml（通し版）"
+  if bin/demo program demos/audit_agent.yaml --lang ja,en && [[ -s out/audit_agent/program/audit_agent_ja/audit_agent_ja.mp4 ]]; then
+    green "   OK  out/audit_agent/program/audit_agent_ja.zip（通し版 mp4 ＋ player.html）"
+    green "   OK  out/audit_agent/program/audit_agent_en.zip（英語版）"
+  else
+    red "   NG  通し版を作れませんでした"; failed=1
+  fi
+fi
+
 echo
 if [[ $failed == 0 ]]; then green "動作確認が完了しました。完成動画は out/<シーンID>/run/build/final.mp4 です"; else red "失敗したシーンがあります"; fi
 exit $failed

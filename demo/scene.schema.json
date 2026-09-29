@@ -226,6 +226,36 @@
           "minimum": 2,
           "maximum": 30,
           "description": "字幕を読む速さ（字/秒）。既定は言語ごと（ja 7、en 15）"
+        },
+        "guide": {
+          "oneOf": [
+            {
+              "type": "boolean",
+              "const": false
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "breadcrumb": {
+                  "type": "boolean",
+                  "description": "右上に「シーン名 › 章名」を出す（通し版では先頭に n/N）"
+                },
+                "progress_bar": {
+                  "type": "boolean",
+                  "description": "下端に全体の進行バーと章・シーンの区切り目盛りを出す"
+                },
+                "position": {
+                  "enum": [
+                    "top-right",
+                    "top-left"
+                  ],
+                  "description": "パンくずの位置"
+                }
+              }
+            }
+          ],
+          "description": "常時ガイド。false で両方消す"
         }
       }
     },

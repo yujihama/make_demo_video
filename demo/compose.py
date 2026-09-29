@@ -49,6 +49,8 @@ class Plan:
     compares: list = field(default_factory=list)
     reading_cps: float | None = None
     main_s: float = 0.0
+    boxes: list = field(default_factory=list)      # (a, b, box): 操作対象の位置（ガイドとの重なり判定用）
+    guide: dict | None = None                       # 常時ガイド（attach_guide で設定）
 
     @property
     def intro_s(self) -> float:
@@ -59,7 +61,7 @@ class Plan:
         return self.outro["duration"] if self.outro else 0.0
 
 
-def make_plan(m: dict, scene: dict, tm, segs, W: int, H: int) -> Plan:
+def make_plan(m: dict, scene: dict, tm, segs, W: int, H: int, overrides: dict | None = None) -> Plan:
     """操作ログとシーン定義（言語差し替え済み）から、完成動画の時間軸での演出計画を作る。"""
     st = scene_style(scene)
     effs = step_effects(scene)
@@ -69,8 +71,11 @@ def make_plan(m: dict, scene: dict, tm, segs, W: int, H: int) -> Plan:
     ch_specs = [s["chapter"] for s in scene["steps"] if "chapter" in s]
     titles = [c["title"] for c in ch_specs]
 
-    intro = _card_opts(st["intro"], INTRO_S, title=scene["title"], subtitle=ui(lang, "arrow", uio).join(titles))
-    outro = _card_opts(st["outro"], OUTRO_S, title=ui(lang, "summary", uio), text=scene["title"], items=titles)
+    ov_ = overrides or {}
+    # 通し版では、イントロ（全体の題名／シーンの区切り）とまとめ（最後のシーンだけ）を差し替える
+    intro = _card_opts(ov_.get("intro", st["intro"]), INTRO_S, title=scene["title"], subtitle=ui(lang, "arrow", uio).join(titles))
+    outro = _card_opts(ov_.get("outro", st["outro"]), OUTRO_S, title=ui(lang, "summary", uio), text=scene["title"], items=titles)
+    step_prefix = ov_.get("step_prefix", "")
     lead = intro["duration"] if intro else 0.0
     T = lambda v: lead + tm(v)
 
@@ -97,7 +102,7 @@ def make_plan(m: dict, scene: dict, tm, segs, W: int, H: int) -> Plan:
             label = spec.get("title")
             plan.chapters.append({"i": i, "a": a, "b": b, "n": chapter_no, "total": len(ch_specs), "title": spec["title"],
                                   "desc": spec.get("description", ""),
-                                  "step_label": ui(lang, "step", uio, n=chapter_no, total=len(ch_specs))})
+                                  "step_label": step_prefix + ui(lang, "step", uio, n=chapter_no, total=len(ch_specs))})
         if e["kind"] == "compare":
             plan.compares.append({"i": i, "a": a, "b": b, "title": spec.get("title", ""),
                                   "before": spec.get("before", {}), "after": spec.get("after", {})})
@@ -109,6 +114,8 @@ def make_plan(m: dict, scene: dict, tm, segs, W: int, H: int) -> Plan:
             else:
                 avail = (act - a - 0.1) if act is not None else 0.6
                 plan.camera.add(a, avail, box if eff["zoom"] != "out" else None, eff["zoom"])
+        if box:
+            plan.boxes.append((a, b, box))
         if eff.get("ripple") and act is not None and box:
             plan.ripples.append({"t": act, "pt": (box[0] + box[2] / 2, box[1] + box[3] / 2)})
         if eff.get("spotlight") and box:
@@ -142,6 +149,28 @@ def make_plan(m: dict, scene: dict, tm, segs, W: int, H: int) -> Plan:
             if sp > 1:
                 plan.badges.append({"a": T(s), "b": T(e), "label": ui(lang, "fast", uio, speed=f"{sp:g}")})
     return plan
+
+
+def part_duration(plan: Plan) -> float:
+    return plan.intro_s + plan.main_s + plan.outro_s
+
+
+def attach_guide(plan: Plan, scene: dict, program: dict | None = None) -> None:
+    """常時ガイド（右上のパンくず＋下端の進行バー）を設定する。
+    program は通し版の中での位置: {offset, total, ticks, scene_no, scene_total, guide}。無ければこのシーン単体で考える。"""
+    cfg = {**scene_style(scene)["guide"], **((program or {}).get("guide") or {})}
+    if not (cfg.get("breadcrumb") or cfg.get("progress_bar")):
+        plan.guide = None
+        return
+    if program:
+        offset, total, ticks = program["offset"], program["total"], program["ticks"]
+        chip = f"{program['scene_no']}/{program['scene_total']}" if program["scene_total"] > 1 else None
+    else:
+        offset, total, chip = 0.0, part_duration(plan), None
+        ticks = [(c["a"], "chapter") for c in plan.chapters[1:]]
+    plan.guide = {"breadcrumb": cfg.get("breadcrumb", True), "bar": cfg.get("progress_bar", True),
+                  "position": cfg.get("position", "top-right"), "offset": offset, "total": total, "ticks": ticks,
+                  "chip": chip, "scene_title": scene["title"]}
 
 
 def readability(plan: Plan) -> list[dict]:
@@ -289,14 +318,19 @@ def _main(reader, tm, plan: Plan, t: float, cache) -> Image.Image:
             shown = n if t >= k["end"] else int(n * ov.progress(t, k["a"], max(0.01, k["end"] - k["a"])))
             caret = t < k["end"] + 0.4 and int(t * 3) % 2 == 0
             ov.keystrokes(layer, k["label"], k["text"][:shown], caret, a, accent)
+    crumb = bool(plan.guide and plan.guide["breadcrumb"])
     for to in plan.toasts:
         a = ov.fade(t, to["a"], to["b"], 0.3, 0.35)
-        if a > 0:
-            ov.toast(layer, to["text"], ov.progress(t, to["a"], 0.4), a)
+        if a > 0:  # ガイドがあるときは、パンくずと上に出た字幕の下へ
+            ov.toast(layer, to["text"], ov.progress(t, to["a"], 0.4), a, y=186 if crumb else 120)
+    fast = None
     for bd in plan.badges:
         a = ov.fade(t, bd["a"], bd["b"], 0.2, 0.2)
         if a > 0:
-            ov.badge(layer, bd["label"], a, accent)
+            if crumb:  # 早送り表示はパンくずの中に入れる（右上を混ませない）
+                fast = bd["label"] if a > 0.5 else fast
+            else:
+                ov.badge(layer, bd["label"], a, accent)
     for c in plan.captions:
         a = ov.fade(t, c["a"], c["b"], 0.25, 0.2)
         if a > 0:
@@ -309,7 +343,7 @@ def _main(reader, tm, plan: Plan, t: float, cache) -> Image.Image:
                 m = 24
                 top = bx < cx0 + im.width + m and bx + bw > cx0 - m and by < cy0 + im.height + m and by + bh > cy0 - m
             rise = (1 - ov.ease_out(ov.progress(t, c["a"], 0.3))) * 18
-            y = 44 - rise if top else H - im.height - 48 + rise
+            y = (100 if crumb else 44) - rise if top else H - im.height - 48 + rise
             ov.paste(layer, im, ((W - im.width) / 2, y), a)
 
     frame = frame.convert("RGBA")
@@ -338,7 +372,35 @@ def _main(reader, tm, plan: Plan, t: float, cache) -> Image.Image:
             p_after = ov.progress(t, cp["a"] + 0.9, 0.5)
             card = ov.compare_card((W, H), cp["title"], cp["before"], cp["after"], p_after, accent)
             frame.alpha_composite(ov.with_alpha(card, a))
+    if plan.guide:
+        # カードが出ている間はパンくずを隠す（カード自体が今どこかを示すため）。進行バーは常に出す
+        card_a = max([ov.fade(t, c["a"], c["b"], 0.35, 0.3) for c in plan.chapters]
+                     + [ov.fade(t, c["a"], c["b"], 0.35, 0.3) for c in plan.compares] + [0.0])
+        _draw_guide(frame, plan, t, crop, 1.0 - card_a, fast)
     return frame.convert("RGB")
+
+
+def _draw_guide(frame: Image.Image, plan: Plan, t: float, crop, crumb_a: float, fast: str | None) -> None:
+    g = plan.guide
+    layer = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+    if g["breadcrumb"] and crumb_a > 0.01:
+        current = None
+        for c in plan.chapters:
+            if c["a"] <= t:
+                current = c["title"]
+        im = ov.breadcrumb_image(g["chip"], g["scene_title"], current, fast, plan.accent)
+        rx, ry, rw, rh = ov.breadcrumb_rect(im, plan.W, g["position"])
+        # 操作対象がパンくずに重なるときは薄くする（隠さない）
+        for a, b, box in plan.boxes:
+            if a <= t <= b:
+                bx, by, bw, bh = plan.camera.rect_to_screen(box, crop)
+                if bx < rx + rw + 16 and bx + bw > rx - 16 and by < ry + rh + 16 and by + bh > ry - 16:
+                    crumb_a *= 0.3
+                    break
+        ov.paste(layer, im, (rx, ry), crumb_a)
+    if g["bar"]:
+        ov.progress_bar(layer, g["offset"] + t, g["total"], g["ticks"], plan.accent)
+    frame.alpha_composite(layer)
 
 
 def _chapter_follows_intro(plan: Plan) -> bool:
@@ -348,7 +410,8 @@ def _chapter_follows_intro(plan: Plan) -> bool:
 def _intro(reader, raw_start, plan: Plan, t: float, cache) -> Image.Image:
     if "intro" not in cache:
         bg = ov.blurred(reader.get(raw_start).copy(), 0.4)
-        card = ov.title_card(bg.size, plan.intro["title"], plan.intro.get("subtitle", ""), plan.accent)
+        card = ov.title_card(bg.size, plan.intro["title"], plan.intro.get("subtitle", ""), plan.accent,
+                             plan.intro.get("eyebrow", ""))
         cache["intro"] = (bg.convert("RGBA"), card, reader.get(raw_start).copy().convert("RGBA"))
     bg, card, first = cache["intro"]
     d = plan.intro["duration"]
@@ -358,7 +421,16 @@ def _intro(reader, raw_start, plan: Plan, t: float, cache) -> Image.Image:
     a = ov.fade(t, 0, d, 0.4, 0.5)
     rise = (1 - ov.ease_out(ov.progress(t, 0, 0.6))) * 20
     frame.alpha_composite(ov.with_alpha(card, a), (0, int(rise)))
+    _bar_only(frame, plan, t)
     return frame.convert("RGB")
+
+
+def _bar_only(frame: Image.Image, plan: Plan, t: float) -> None:
+    """イントロ・まとめでは進行バーだけを出す（t はこのパートの先頭からの秒）。"""
+    if plan.guide and plan.guide["bar"]:
+        layer = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+        ov.progress_bar(layer, plan.guide["offset"] + t, plan.guide["total"], plan.guide["ticks"], plan.accent)
+        frame.alpha_composite(layer)
 
 
 def _outro(reader, raw_end, plan: Plan, t: float, cache) -> Image.Image:
@@ -372,6 +444,7 @@ def _outro(reader, raw_end, plan: Plan, t: float, cache) -> Image.Image:
     frame = Image.blend(last, bg, mix)
     a = ov.fade(t, 0.2, plan.outro["duration"], 0.5, 0.01)
     frame.alpha_composite(ov.with_alpha(card, a))
+    _bar_only(frame, plan, plan.intro_s + plan.main_s + t)
     return frame.convert("RGB")
 
 
