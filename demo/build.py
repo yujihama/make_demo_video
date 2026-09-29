@@ -21,8 +21,7 @@ from .ff import FFMPEG
 from .i18n import localize, scene_lang
 from .overlays import plain
 from .style import scene_style
-from .record import SYNC_MS
-from .sync import offset as sync_offset
+from .sync import SYNC_MS, offset as sync_offset
 
 IDLE_SPEED = 4.0
 KEEP_BEFORE, KEEP_AFTER = 0.8, 0.6  # 早送り区間の前後に等速で残す秒数
@@ -87,13 +86,11 @@ def build_dir(run_dir: Path, scene: dict | None, lang: str | None) -> Path:
     return Path(run_dir) / ("build" if not lang or lang == base else f"build-{lang}")
 
 
-def build(run_dir: str | Path, out: str | Path | None = None, speed: float = IDLE_SPEED, burn: bool = True,
-          lang: str | None = None) -> dict:
+def prepare(run_dir: str | Path, lang: str | None = None, speed: float = IDLE_SPEED) -> dict:
+    """録画と操作ログを読み、動画時刻への変換・早送り区間・言語差し替え済みのシーンを用意する（合成の前段）。"""
     run_dir = Path(run_dir)
     m = json.loads((run_dir / "events.json").read_text(encoding="utf-8"))
     src_scene = scene_mod.load(m["scene_path"]) if Path(m["scene_path"]).exists() else None
-    out = Path(out or build_dir(run_dir, src_scene, lang))
-    out.mkdir(parents=True, exist_ok=True)
     video = Path(m["video"])
     if not video.is_absolute() and not video.exists():
         video = run_dir / video.name
@@ -107,11 +104,19 @@ def build(run_dir: str | Path, out: str | Path | None = None, speed: float = IDL
     start = round(m["sync_host"] + off + SYNC_MS / 1000 + 0.2, 3)   # マーカーの直後から
     end = round(m["events"][-1]["v_end"] + 0.3, 3)
     segs = segments(m["events"], start, end, speed)
-    tm = TimeMap(segs)
+    return {"run_dir": run_dir, "m": m, "src_scene": src_scene, "scene": localize(src_scene, lang) if src_scene else None,
+            "video": video, "off": off, "start": start, "end": end, "segs": segs, "tm": TimeMap(segs), "speed": speed}
 
-    scene = localize(src_scene, lang) if src_scene else None
+
+def build(run_dir: str | Path, out: str | Path | None = None, speed: float = IDLE_SPEED, burn: bool = True,
+          lang: str | None = None) -> dict:
+    pre = prepare(run_dir, lang, speed)
+    m, src_scene, scene, video = pre["m"], pre["src_scene"], pre["scene"], pre["video"]
+    off, start, end, segs, tm = pre["off"], pre["start"], pre["end"], pre["segs"], pre["tm"]
+    out = Path(out or build_dir(Path(run_dir), src_scene, lang))
+    out.mkdir(parents=True, exist_ok=True)
     if scene and scene_style(scene)["effects"] == "rich":
-        return _build_rich(m, scene, video, out, off, start, end, segs, tm, speed)
+        return build_rich(pre, out)
 
     # 字幕: キャプション付きステップの開始〜終了（文言は言語差し替え済みのシーンから取る）
     specs = [next(iter(s.values())) for s in scene["steps"]] if scene else []
@@ -169,14 +174,25 @@ def _write_chapters(out: Path, chapters: list[dict]) -> None:
     (out / "chapters.ffmeta").write_text("\n".join(meta) + "\n", encoding="utf-8")
 
 
-def _build_rich(m, scene, video, out, off, start, end, segs, tm, speed) -> dict:
-    """rich 演出: 合成エンジンでカメラ・波紋・スポットライト・字幕・カードを重ねる。"""
-    from .compose import make_plan, readability, render, srt_lines
+def rich_plan(pre: dict, overrides: dict | None = None, program: dict | None = None):
+    """合成の計画だけを作る（通し版がシーンの長さと章の位置を先に知るためにも使う）。"""
+    from .compose import attach_guide, make_plan
     from .crv import probe
 
-    info = probe(video)
-    W, H = info["width"], info["height"]
-    plan = make_plan(m, scene, tm, segs, W, H)
+    info = probe(pre["video"])
+    plan = make_plan(pre["m"], pre["scene"], pre["tm"], pre["segs"], info["width"], info["height"], overrides)
+    attach_guide(plan, pre["scene"], program)
+    return plan
+
+
+def build_rich(pre: dict, out: Path, overrides: dict | None = None, program: dict | None = None) -> dict:
+    """rich 演出: 合成エンジンでカメラ・波紋・スポットライト・字幕・カード・ガイドを重ねる。
+    overrides はイントロ・まとめ・章カードの差し替え、program は通し版の中での位置（ガイド用）。"""
+    from .compose import readability, render, srt_lines
+
+    m, video, off, start, end = pre["m"], pre["video"], pre["off"], pre["start"], pre["end"]
+    segs, tm, speed = pre["segs"], pre["tm"], pre["speed"]
+    plan = rich_plan(pre, overrides, program)
     lead, main = plan.intro_s, tm.duration
     total = round(lead + main + plan.outro_s, 3)
     lines = srt_lines(plan, srt_time)

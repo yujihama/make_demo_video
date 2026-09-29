@@ -28,13 +28,17 @@ DEFAULT_LANG = "ja"
 
 UI = {
     "ja": {"step": "STEP {n} / {total}", "summary": "まとめ", "saved": "{name} を保存しました",
-           "fast": "早送り ×{speed}", "typing": "入力", "arrow": " → "},
+           "fast": "早送り ×{speed}", "typing": "入力", "arrow": " → ",
+           "scene_of": "シーン {n} / {total}", "contents": "目次", "scene": "シーン", "play": "再生"},
     "en": {"step": "STEP {n} / {total}", "summary": "Summary", "saved": "Saved {name}",
-           "fast": "Fast-forward ×{speed}", "typing": "Typing", "arrow": " → "},
+           "fast": "Fast-forward ×{speed}", "typing": "Typing", "arrow": " → ",
+           "scene_of": "Scene {n} / {total}", "contents": "Contents", "scene": "Scene", "play": "Play"},
     "zh": {"step": "步骤 {n} / {total}", "summary": "总结", "saved": "已保存 {name}",
-           "fast": "快进 ×{speed}", "typing": "输入", "arrow": " → "},
+           "fast": "快进 ×{speed}", "typing": "输入", "arrow": " → ",
+           "scene_of": "场景 {n} / {total}", "contents": "目录", "scene": "场景", "play": "播放"},
     "ko": {"step": "STEP {n} / {total}", "summary": "요약", "saved": "{name} 저장됨",
-           "fast": "빨리 감기 ×{speed}", "typing": "입력", "arrow": " → "},
+           "fast": "빨리 감기 ×{speed}", "typing": "입력", "arrow": " → ",
+           "scene_of": "장면 {n} / {total}", "contents": "목차", "scene": "장면", "play": "재생"},
 }
 
 # 字幕を読み切るのに必要な速さ（1秒あたりの文字数）。字幕の表示時間 ≥ 文字数 / CPS + 反応時間

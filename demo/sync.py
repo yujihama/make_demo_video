@@ -1,6 +1,6 @@
 """同期マーカー検出と、動画フレームの読み出し。
 
-録画開始直後に画面全体をマゼンタで塗る（record.py の SYNC_*）。動画上で最初にその色が
+録画開始直後に画面全体をマゼンタで塗る（SYNC_*）。動画上で最初にその色が
 現れた時刻 v と、ホスト側で塗った時刻 h から offset = v - h を求め、操作ログを動画時刻に変換する。
 """
 from __future__ import annotations
@@ -14,6 +14,8 @@ import numpy as np
 from .ff import FFMPEG
 
 W, H = 64, 36
+SYNC_COLOR = "#ff00ff"
+SYNC_MS = 400
 
 
 def frames(video: Path, start: float = 0, dur: float | None = None, w: int = W, h: int = H):

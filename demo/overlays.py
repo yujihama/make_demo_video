@@ -224,12 +224,12 @@ def toast_image(text: str) -> Image.Image:
     return im
 
 
-def toast(layer: Image.Image, text: str, p_in: float, a: float) -> None:
-    """右上から滑り込む通知。"""
+def toast(layer: Image.Image, text: str, p_in: float, a: float, y: int = 120) -> None:
+    """右上から滑り込む通知。y はガイドがあるときに下へずらす。"""
     im = toast_image(text)
     W = layer.size[0]
     x = W - im.width - 36 + (1 - ease_out(p_in)) * 60
-    paste(layer, im, (x, 120), a)
+    paste(layer, im, (x, y), a)
 
 
 @lru_cache(maxsize=8)
@@ -276,11 +276,14 @@ def chapter_card(size, n: int, total: int, title: str, desc: str, accent, step_l
     return im
 
 
-def title_card(size, title: str, subtitle: str, accent) -> Image.Image:
+def title_card(size, title: str, subtitle: str, accent, eyebrow: str = "") -> Image.Image:
+    """題名カード。eyebrow は題名の上の小見出し（通し版の「シーン 2 / 2」など）。"""
     W, H = size
     im = Image.new("RGBA", size, (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
     d.rounded_rectangle((W / 2 - 60, H / 2 - 120, W / 2 + 60, H / 2 - 112), 4, fill=(*accent, 255))
+    if eyebrow:
+        d.text((W / 2, H / 2 - 160), eyebrow, font=font(34, bold=True), fill=(*accent, 255), anchor="mm")
     d.text((W / 2, H / 2 - 30), title, font=font(84, bold=True), fill=WHITE, anchor="mm")
     if subtitle:
         d.text((W / 2, H / 2 + 60), subtitle, font=font(38), fill=MUTED, anchor="mm")
@@ -393,6 +396,78 @@ def compare_card(size, title: str, before: dict, after: dict, p_after: float, ac
         slide = (1 - ease_out(p_after)) * 60
         im.alpha_composite(with_alpha(right, min(1.0, p_after * 1.5)), (int(W / 2 + gap / 2 + slide), int(y0)))
     return im
+
+
+# --- 常時ガイド（通し版の中で今どこかを示す） ------------------------------------------
+GUIDE_MARGIN = 28
+
+
+def chevron(d: ImageDraw.ImageDraw, x: float, y: float, col, size: int = 9) -> None:
+    """区切りの「›」。フォントに無いことがあるので図形で描く。"""
+    d.line([(x, y - size), (x + size * 0.75, y), (x, y + size)], fill=col, width=3, joint="curve")
+
+
+@lru_cache(maxsize=64)
+def breadcrumb_image(scene_chip: str | None, scene_title: str, chapter_title: str | None, fast: str | None,
+                     accent: tuple) -> Image.Image:
+    """右上のパンくず: [1/2] シーン名 › 章名。早送り中は先頭に「▶▶ 早送り ×4」を入れる。"""
+    f, fb, fs = font(26), font(26, bold=True), font(20, bold=True)
+    items = []  # (種類, 文字, 幅)
+    if fast:
+        items.append(("fast", fast, fs.getlength(fast) + 58))
+    if scene_chip:
+        items.append(("chip", scene_chip, fs.getlength(scene_chip) + 20))
+    items.append(("scene", scene_title, (fb if not chapter_title else f).getlength(scene_title)))
+    if chapter_title:
+        items.append(("sep", "", 12))
+        items.append(("chapter", chapter_title, fb.getlength(chapter_title)))
+    gap = 16
+    w = int(sum(x[2] for x in items) + gap * (len(items) - 1) + 44)
+    h = 54
+    im = rounded((w, h), h // 2, (*INK, 210))
+    d = ImageDraw.Draw(im)
+    x, cy = 22, h / 2
+    for kind, text, iw in items:
+        if kind == "fast":
+            d.rounded_rectangle((x - 6, cy - 16, x + iw - 6, cy + 16), 16, fill=(*accent, 255))
+            for k in range(2):
+                tx = x + 8 + k * 13
+                d.polygon([(tx, cy - 8), (tx + 12, cy), (tx, cy + 8)], fill=INK)
+            d.text((x + 40, cy), text, font=fs, fill=INK, anchor="lm")
+        elif kind == "chip":
+            d.rounded_rectangle((x, cy - 15, x + iw, cy + 15), 8, fill=(*accent, 255))
+            d.text((x + iw / 2, cy), text, font=fs, fill=INK, anchor="mm")
+        elif kind == "scene":
+            d.text((x, cy), text, font=f if chapter_title else fb, fill=MUTED if chapter_title else WHITE, anchor="lm")
+        elif kind == "sep":
+            chevron(d, x + 2, cy, (148, 163, 184, 255))
+        else:
+            d.text((x, cy), text, font=fb, fill=WHITE, anchor="lm")
+        x += iw + gap
+    return im
+
+
+def breadcrumb_rect(im: Image.Image, W: int, position: str = "top-right") -> tuple[int, int, int, int]:
+    x = W - im.width - GUIDE_MARGIN if position == "top-right" else GUIDE_MARGIN
+    return (x, GUIDE_MARGIN, im.width, im.height)
+
+
+def progress_bar(layer: Image.Image, g: float, total: float, ticks, accent, a: float = 1.0) -> None:
+    """画面の最下部に、通し版全体の進み具合を細いバーで描く。章の区切りは細い目盛り、シーンの区切りは太く高い目盛り。"""
+    if a <= 0.001 or total <= 0:
+        return
+    W, H = layer.size
+    d = ImageDraw.Draw(layer)
+    y = H - 8
+    d.rectangle((0, y, W, H), fill=(*INK, int(170 * a)))
+    d.rectangle((0, y, int(W * min(1.0, max(0.0, g / total))), H), fill=(*accent, int(255 * a)))
+    for tg, kind in ticks:
+        x = W * tg / total
+        if 1 < x < W - 1:
+            if kind == "scene":
+                d.rectangle((x - 2, y - 8, x + 2, H), fill=(255, 255, 255, int(235 * a)))
+            else:
+                d.rectangle((x - 1, y, x + 1, H), fill=(255, 255, 255, int(200 * a)))
 
 
 def ease_out(p: float) -> float:

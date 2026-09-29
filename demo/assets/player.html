@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="__LANG__">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b1020; --panel: #121a2e; --panel-2: #18223a; --line: #26324d;
+    --text: #e8edf6; --muted: #93a0b8; --accent: __ACCENT__;
+    --track: #2a3552; --buffer: #3a4768;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 "BIZ UDPGothic", "Noto Sans JP", "Hiragino Sans", "Segoe UI", system-ui, sans-serif; }
+  header { padding: 18px 24px 10px; }
+  header h1 { margin: 0; font-size: 20px; font-weight: 700; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; padding: 8px 24px 28px; align-items: start; }
+  main > section, aside { min-width: 0; }
+  .stage { background: #000; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+  .stage:fullscreen { border-radius: 0; border: 0; display: flex; flex-direction: column; justify-content: center; }
+  .screen { position: relative; aspect-ratio: 16 / 9; background: #000; }
+  .stage:fullscreen .screen { flex: 1; aspect-ratio: auto; }
+  video { width: 100%; height: 100%; display: block; object-fit: contain; cursor: pointer; }
+  .notice { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px;
+    text-align: center; color: var(--muted); background: #05070d; }
+  .notice.show { display: flex; }
+  .bigplay { position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; margin: -38px 0 0 -38px; border-radius: 50%;
+    border: 0; background: rgba(11, 16, 32, .72); cursor: pointer; display: grid; place-items: center; }
+  .bigplay svg { width: 30px; height: 30px; fill: var(--accent); margin-left: 5px; }
+  .bigplay[hidden] { display: none; }
+
+  .controls { background: var(--panel); padding: 10px 14px 12px; }
+  .seek { position: relative; padding-top: 22px; cursor: pointer; user-select: none; touch-action: none; }
+  .scenes, .segs { display: flex; }
+  .scenes { position: absolute; left: 0; right: 0; top: 0; height: 18px; pointer-events: none; }
+  .scenes div { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    border-left: 2px solid var(--line); padding-left: 6px; line-height: 18px; }
+  .scenes div.on { color: var(--text); border-left-color: var(--accent); }
+  .scenes b { color: var(--accent); margin-right: 4px; }
+  .segs { height: 10px; align-items: center; }
+  .seg { position: relative; height: 6px; background: var(--track); border-radius: 3px; overflow: hidden; transition: height .12s; }
+  .seek:hover .seg { height: 10px; }
+  .seg .fill { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--accent); }
+  .knob { position: absolute; top: 22px; width: 14px; height: 14px; margin: -2px 0 0 -7px; border-radius: 50%;
+    background: #fff; box-shadow: 0 0 0 3px rgba(0,0,0,.35); pointer-events: none; }
+  .tip { position: absolute; bottom: 22px; width: 200px; margin-left: -100px; background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 8px; overflow: hidden; pointer-events: none; display: none; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+  .tip img { width: 100%; aspect-ratio: 16 / 9; display: block; background: #000; }
+  .tip div { padding: 6px 8px; font-size: 12px; line-height: 1.4; }
+  .tip small { color: var(--muted); display: block; }
+  .row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .row button { background: transparent; border: 0; color: var(--text); width: 36px; height: 36px; border-radius: 8px;
+    cursor: pointer; display: grid; place-items: center; }
+  .row button:hover { background: var(--panel-2); }
+  .row button svg { width: 20px; height: 20px; fill: currentColor; }
+  .time { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .where { flex: 1; min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .where .chip { background: var(--accent); color: #0b1020; font-weight: 700; border-radius: 5px; padding: 1px 6px; margin-right: 6px; font-size: 12px; }
+  .where .sc { color: var(--muted); }
+  .keys { margin: 10px 2px 0; color: var(--muted); font-size: 12px; }
+
+  aside { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  aside h2 { margin: 0; padding: 12px 14px; font-size: 14px; border-bottom: 1px solid var(--line); }
+  .toc { max-height: calc(100vh - 150px); overflow: auto; }
+  .scene-h { display: flex; gap: 8px; align-items: baseline; padding: 12px 14px 6px; font-weight: 700; font-size: 14px; cursor: pointer; }
+  .scene-h .n { color: var(--accent); }
+  .scene-h .t { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .ch { display: grid; grid-template-columns: 96px 1fr; gap: 10px; padding: 6px 14px 6px 11px; border-left: 3px solid transparent;
+    cursor: pointer; align-items: center; }
+  .ch:hover { background: var(--panel-2); }
+  .ch.on { border-left-color: var(--accent); background: var(--panel-2); }
+  .ch img { width: 96px; aspect-ratio: 16 / 9; border-radius: 5px; display: block; background: #000; }
+  .ch .tt { font-size: 13px; line-height: 1.35; }
+  .ch .tm { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .ch .bar { height: 3px; background: var(--track); border-radius: 2px; margin-top: 5px; overflow: hidden; }
+  .ch .bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+
+  @media (max-width: 900px) {
+    header { padding: 14px 16px 6px; }
+    main { grid-template-columns: minmax(0, 1fr); padding: 6px 16px 20px; }
+    .row { gap: 2px; }
+    .row button { width: 32px; }
+    .toc { max-height: none; }
+    .keys { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>__TITLE__</h1>
+  <p>__SUBTITLE__</p>
+</header>
+<main>
+  <section>
+    <div class="stage" id="stage">
+      <div class="screen">
+        <video id="v" preload="metadata" playsinline></video>
+        <button class="bigplay" id="big" aria-label="play"><svg viewBox="0 0 24 24"><path d="M5 3l16 9-16 9z"/></svg></button>
+        <div class="notice" id="notice"></div>
+      </div>
+      <div class="controls">
+        <div class="seek" id="seek">
+          <div class="scenes" id="scenes"></div>
+          <div class="segs" id="segs"></div>
+          <div class="knob" id="knob"></div>
+          <div class="tip" id="tip"><img id="tipimg" alt=""><div><span id="tiptitle"></span><small id="tiptime"></small></div></div>
+        </div>
+        <div class="row">
+          <button id="play"><svg viewBox="0 0 24 24" id="playicon"><path d="M6 4l14 8-14 8z"/></svg></button>
+          <button id="prev"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+          <button id="next"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+          <span class="time" id="time">0:00 / 0:00</span>
+          <span class="where" id="where"></span>
+          <button id="full"><svg viewBox="0 0 24 24"><path d="M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <p class="keys" id="keys"></p>
+  </section>
+  <aside>
+    <h2 id="contents"></h2>
+    <div class="toc" id="toc"></div>
+  </aside>
+</main>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+(() => {
+  const D = JSON.parse(document.getElementById("data").textContent);
+  const U = D.ui, $ = id => document.getElementById(id);
+  const v = $("v"), seek = $("seek"), segsEl = $("segs"), tip = $("tip");
+  const total = D.total;
+  const fmt = s => { s = Math.max(0, Math.floor(s)); const m = Math.floor(s / 60); return m + ":" + String(s % 60).padStart(2, "0"); };
+  const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+  // 章の一覧（シーンをまたいで平らに）
+  const chs = [];
+  D.toc.forEach((sc, si) => sc.chapters.forEach((c, ci) => chs.push({ ...c, si, ci, scene: sc })));
+
+  $("contents").textContent = U.contents;
+  $("keys").textContent = U.keys;
+  $("prev").title = U.prev; $("next").title = U.next; $("full").title = U.full; $("play").title = U.play;
+  $("notice").textContent = U.open_hint;
+
+  // シークバー: 章ごとの区切り（シーンの境目は広め）と、その上にシーン名の帯
+  const GAP_CH = 3, GAP_SC = 10;
+  chs.forEach((c, k) => {
+    const d = document.createElement("div");
+    d.className = "seg";
+    d.style.flex = String(c.end - c.start);
+    if (k > 0) d.style.marginLeft = (c.si !== chs[k - 1].si ? GAP_SC : GAP_CH) + "px";
+    d.innerHTML = '<div class="fill"></div>';
+    segsEl.appendChild(d);
+    c.el = d; c.fill = d.firstChild;
+  });
+  D.toc.forEach((sc, si) => {
+    const d = document.createElement("div");
+    d.style.flex = String(sc.end - sc.start);
+    if (si > 0) d.style.marginLeft = GAP_SC + "px";
+    d.innerHTML = (D.toc.length > 1 ? "<b>" + sc.no + "</b>" : "") + esc(sc.title);
+    $("scenes").appendChild(d);
+    sc.label = d;
+  });
+
+  // 目次
+  const toc = $("toc");
+  D.toc.forEach(sc => {
+    const h = document.createElement("div");
+    h.className = "scene-h";
+    h.innerHTML = (D.toc.length > 1 ? '<span class="n">' + esc(U.scene) + " " + sc.no + "</span>" : "") +
+      "<span>" + esc(sc.title) + '</span><span class="t">' + fmt(sc.start) + "</span>";
+    h.onclick = () => go(sc.start, true);
+    toc.appendChild(h);
+    chs.filter(c => c.scene === sc).forEach(c => {
+      const r = document.createElement("div");
+      r.className = "ch";
+      r.innerHTML = '<img alt="" src="' + c.thumb + '"><div><div class="tt">' + esc(c.title) + '</div><div class="tm">' +
+        fmt(c.start) + '</div><div class="bar"><i></i></div></div>';
+      r.onclick = () => go(c.start, true);
+      toc.appendChild(r);
+      c.row = r; c.rowbar = r.querySelector(".bar i");
+    });
+  });
+
+  // シークバー上の位置 ⇔ 時刻（区切りの隙間を考慮する）
+  function layout() { return chs.map(c => { const b = c.el.getBoundingClientRect(); return { c, x0: b.left, x1: b.right }; }); }
+  function timeAt(clientX) {
+    const L = layout();
+    let best = L[0];
+    for (const s of L) { if (clientX >= s.x0) best = s; }
+    const p = Math.min(1, Math.max(0, (clientX - best.x0) / Math.max(1, best.x1 - best.x0)));
+    return { t: best.c.start + p * (best.c.end - best.c.start), c: best.c };
+  }
+  function xAt(t) {
+    const c = chapterAt(t), b = c.el.getBoundingClientRect(), s = seek.getBoundingClientRect();
+    return b.left - s.left + (b.width * (t - c.start)) / Math.max(0.001, c.end - c.start);
+  }
+  function chapterAt(t) { let cur = chs[0]; for (const c of chs) { if (t >= c.start - 0.05) cur = c; } return cur; }
+
+  function go(t, play) {
+    v.currentTime = Math.min(Math.max(0, t) + 0.01, total - 0.05);
+    if (play) v.play().catch(() => {});
+    render();
+  }
+
+  let lastCh = null;
+  function render() {
+    const t = v.currentTime || 0, cur = chapterAt(t);
+    chs.forEach(c => {
+      const p = t >= c.end ? 1 : t <= c.start ? 0 : (t - c.start) / (c.end - c.start);
+      c.fill.style.width = (p * 100) + "%";
+      c.rowbar.style.width = (p * 100) + "%";
+    });
+    $("knob").style.left = xAt(t) + "px";
+    $("time").textContent = fmt(t) + " / " + fmt(total);
+    if (cur !== lastCh) {
+      chs.forEach(c => c.row.classList.toggle("on", c === cur));
+      D.toc.forEach(sc => sc.label.classList.toggle("on", sc === cur.scene));
+      $("where").innerHTML = (D.toc.length > 1 ? '<span class="chip">' + cur.scene.no + "/" + D.toc.length + "</span>" : "") +
+        '<span class="sc">' + esc(cur.scene.title) + "</span> › " + esc(cur.title);
+      const box = toc.getBoundingClientRect(), rb = cur.row.getBoundingClientRect();
+      if (rb.top < box.top || rb.bottom > box.bottom) toc.scrollTop += rb.top - box.top - 40;
+      lastCh = cur;
+    }
+  }
+
+  // シークバーの操作（ドラッグ可）とホバーのサムネイル
+  let dragging = false;
+  seek.addEventListener("pointerdown", e => { dragging = true; seek.setPointerCapture(e.pointerId); go(timeAt(e.clientX).t); });
+  seek.addEventListener("pointermove", e => {
+    const { t, c } = timeAt(e.clientX), s = seek.getBoundingClientRect();
+    if (dragging) go(t);
+    tip.style.display = "block";
+    const x = Math.min(Math.max(e.clientX - s.left, 100), s.width - 100);
+    tip.style.left = x + "px";
+    $("tipimg").src = c.thumb;
+    $("tiptitle").textContent = (D.toc.length > 1 ? c.scene.no + ". " : "") + c.title;
+    $("tiptime").textContent = fmt(t) + " · " + c.scene.title;
+  });
+  seek.addEventListener("pointerup", () => { dragging = false; });
+  seek.addEventListener("pointerleave", () => { if (!dragging) tip.style.display = "none"; });
+
+  const icon = playing => $("playicon").innerHTML = playing ? '<path d="M6 4h4v16H6zm8 0h4v16h-4z"/>' : '<path d="M6 4l14 8-14 8z"/>';
+  const toggle = () => (v.paused ? v.play().catch(() => {}) : v.pause());
+  $("play").onclick = toggle; $("big").onclick = toggle; v.onclick = toggle;
+  v.addEventListener("play", () => { icon(true); $("big").hidden = true; $("play").title = U.pause; });
+  v.addEventListener("pause", () => { icon(false); $("play").title = U.play; });
+  v.addEventListener("timeupdate", render);
+  v.addEventListener("seeked", render);
+  v.addEventListener("error", () => $("notice").classList.add("show"));
+  const step = d => { const k = chs.indexOf(chapterAt(v.currentTime)); const back = d < 0 && v.currentTime - chs[k].start > 2;
+    go(chs[Math.min(chs.length - 1, Math.max(0, back ? k : k + d))].start, !v.paused); };
+  $("prev").onclick = () => step(-1); $("next").onclick = () => step(1);
+  $("full").onclick = () => document.fullscreenElement ? document.exitFullscreen() : $("stage").requestFullscreen();
+  document.addEventListener("keydown", e => {
+    if (e.target.closest && e.target.closest("input, textarea")) return;
+    const k = e.key;
+    if (k === " " || k === "k") { e.preventDefault(); toggle(); }
+    else if (k === "ArrowLeft") go(v.currentTime - 5);
+    else if (k === "ArrowRight") go(v.currentTime + 5);
+    else if (k === "[" || k === "PageUp") step(-1);
+    else if (k === "]" || k === "PageDown") step(1);
+    else if (k === "f" || k === "F") $("full").onclick();
+  });
+  window.addEventListener("resize", render);
+
+  v.src = D.video;
+  // #t=秒 で開くとその位置から
+  const m = location.hash.match(/t=(\d+(?:\.\d+)?)/);
+  v.addEventListener("loadedmetadata", () => { if (m) go(parseFloat(m[1])); render(); }, { once: true });
+  render();
+})();
+</script>
+</body>
+</html>

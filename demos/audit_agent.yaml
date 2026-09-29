@@ -1,0 +1,20 @@
+# 通し版: 撮影済みのシーンを並べて1本にする（bin/demo program demos/audit_agent.yaml --lang ja,en）
+# 各シーンは先に bin/demo loop で撮って合格させておく。録画は loop の合格回を自動で使う
+id: audit_agent
+title: 監査エージェント デモ
+subtitle: 経費の監査 → 規程の質問
+lang: ja
+
+scenes:
+  - scenes/core_audit.yaml
+  - scenes/policy_qa.yaml
+  # 録画を明示するとき: - {scene: scenes/policy_qa.yaml, run: out/policy_qa/loop/iter2}
+
+# 常時ガイド（右上のパンくずと下端の進行バー）。省略時は各シーンの style.guide（既定はどちらも表示）
+# style:
+#   guide: {breadcrumb: true, progress_bar: true, position: top-right}
+
+translations:
+  en:
+    title: Audit Agent Demo
+    subtitle: Expense audit → Policy questions

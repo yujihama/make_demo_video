@@ -28,6 +28,8 @@ DEFAULT_STYLE = {
     "intro": True,              # 冒頭のタイトルカード（true / false / {title, subtitle, duration}）
     "outro": True,              # 末尾のまとめカード（true / false / {title, text, duration}）
     "reading_cps": None,        # 字幕を読む速さ（字/秒）。None は言語ごとの既定（ja 7, en 15）
+    # 常時ガイド: 右上のパンくず（[シーン n/N] シーン名 › 章名）と、下端の進行バー（章・シーンの区切り目盛り付き）
+    "guide": {"breadcrumb": True, "progress_bar": True, "position": "top-right"},
 }
 
 AUTO_EFFECT = {
@@ -46,7 +48,13 @@ AUTO_EFFECT = {
 
 def scene_style(scene: dict) -> dict:
     st = copy.deepcopy(DEFAULT_STYLE)
-    st.update(scene.get("style") or {})
+    user = dict(scene.get("style") or {})
+    guide = user.pop("guide", None)
+    st.update(user)
+    if guide is False:
+        st["guide"] = {"breadcrumb": False, "progress_bar": False, "position": "top-right"}
+    elif isinstance(guide, dict):
+        st["guide"].update(guide)
     return st
 
 

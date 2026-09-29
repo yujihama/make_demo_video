@@ -23,6 +23,10 @@ style:                             # 演出（後工程）。省略すると ric
   intro: {subtitle: 補足の一文}     # 冒頭のタイトルカード。false で無し
   outro: true                      # 末尾のまとめカード。false で無し
   reading_cps: 7                   # 字幕を読む速さ（字/秒）。省略時は言語ごと（ja 7、en 15）
+  guide:                           # 常時ガイド（README 4.9）。false で両方消す
+    breadcrumb: true               #   右上に「シーン名 › 章名」（通し版では先頭に 1/2）
+    progress_bar: true             #   下端に全体の進行バーと章・シーンの区切り
+    position: top-right            #   top-right | top-left
 
 review:                            # 合格判定の基準（bin/demo review / loop が使う）
   min_duration: 10                 # 完成動画の長さの下限（秒）

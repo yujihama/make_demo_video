@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "通し版（複数シーンを1本にまとめる）",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "title",
+    "scenes"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+$",
+      "description": "出力先 out/<id>/program/ の名前"
+    },
+    "title": {
+      "type": "string",
+      "description": "通し版の題名（最初のカード・プレイヤー・動画のメタデータ）"
+    },
+    "subtitle": {
+      "type": "string",
+      "description": "最初のカードの副題。省略時はシーン名を → でつなぐ"
+    },
+    "lang": {
+      "type": "string",
+      "description": "題名の言語（各シーンの元の言語と同じにする）",
+      "default": "ja"
+    },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "description": "並べる順のシーン",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "description": "シーン YAML のパス"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "scene"
+            ],
+            "properties": {
+              "scene": {
+                "type": "string",
+                "description": "シーン YAML のパス"
+              },
+              "run": {
+                "type": "string",
+                "description": "使う録画のフォルダ（events.json のある場所）。省略時は loop の合格回"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "guide": {
+          "oneOf": [
+            {
+              "const": false
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "breadcrumb": {
+                  "type": "boolean"
+                },
+                "progress_bar": {
+                  "type": "boolean"
+                },
+                "position": {
+                  "enum": [
+                    "top-right",
+                    "top-left"
+                  ]
+                }
+              }
+            }
+          ],
+          "description": "各シーンの style.guide を上書き"
+        }
+      }
+    },
+    "translations": {
+      "type": "object",
+      "description": "言語ごとの題名（--lang で使う）",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
